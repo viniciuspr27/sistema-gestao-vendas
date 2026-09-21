@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard de Vendas</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#f5f7fb;color:#18202a}.wrap{max-width:1100px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px}.login,.dash{background:white;border-radius:14px;padding:24px;box-shadow:0 8px 25px #0000000d}.login{max-width:380px;margin:70px auto}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:20px 0}.card{padding:18px;border:1px solid #e7eaf0;border-radius:12px}.value{font-size:25px;font-weight:700;margin-top:8px}.charts{display:grid;grid-template-columns:1fr 1fr;gap:18px}.chartbox{background:white;padding:18px;border-radius:14px;margin-bottom:18px}.full{grid-column:1/-1}input,button{width:100%;padding:12px;margin-top:10px;box-sizing:border-box}button{cursor:pointer;border:0;border-radius:8px;background:#111827;color:white}.error{color:#b42318;margin-top:10px}@media(max-width:800px){.grid,.charts{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div id="login" class="login">
+    <h2>Dashboard de Vendas</h2><p>Entre para acessar os indicadores.</p>
+    <input id="email" type="email" placeholder="E-mail" value="admin@demo.com">
+    <input id="senha" type="password" placeholder="Senha" value="Admin@123">
+    <button onclick="entrar()">Entrar</button><div id="erro" class="error"></div>
+  </div>
+  <div id="dashboard" class="dash" hidden>
+    <div class="top"><div><h1>Dashboard de Vendas</h1><p>Dados tratados → API → indicadores</p></div><button style="width:auto;padding:10px 16px" onclick="sair()">Sair</button></div>
+    <div class="grid">
+      <div class="card">Faturamento pago<div id="fat" class="value">—</div></div>
+      <div class="card">Vendas pagas<div id="vendas" class="value">—</div></div>
+      <div class="card">Ticket médio<div id="ticket" class="value">—</div></div>
+      <div class="card">Itens vendidos<div id="itens" class="value">—</div></div>
+    </div>
+    <div class="charts"><div class="chartbox full"><canvas id="mensal"></canvas></div><div class="chartbox"><canvas id="vendedores"></canvas></div><div class="chartbox"><canvas id="produtos"></canvas></div></div>
+  </div>
+</div>
+<script>
+let token=localStorage.getItem('token'); const money=v=>Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+async function api(path){const r=await fetch(path,{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)throw new Error((await r.json()).erro||'Erro');return r.json()}
+async function entrar(){document.getElementById('erro').textContent='';try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,senha:senha.value})});const d=await r.json();if(!r.ok)throw new Error(d.erro);localStorage.setItem('token',d.token);token=d.token;showDash()}catch(e){document.getElementById('erro').textContent=e.message}}
+function sair(){localStorage.removeItem('token');token=null;location.reload()}
+async function showDash(){if(!token)return;login.hidden=true;dashboard.hidden=false;try{const [k,m,v,p]=await Promise.all([api('/api/kpis'),api('/api/vendas-mensais'),api('/api/vendedores'),api('/api/produtos')]);fat.textContent=money(k.faturamento_pago);vendas.textContent=k.vendas_pagas;ticket.textContent=money(k.ticket_medio);itens.textContent=k.itens_vendidos;
+new Chart(document.getElementById('mensal'),{type:'line',data:{labels:m.map(x=>x.mes),datasets:[{label:'Faturamento pago',data:m.map(x=>x.faturamento),tension:.25}]},options:{responsive:true,plugins:{title:{display:true,text:'Faturamento mensal'}}}});
+new Chart(document.getElementById('vendedores'),{type:'bar',data:{labels:v.map(x=>x.vendedor),datasets:[{label:'Faturamento',data:v.map(x=>x.faturamento)}]},options:{indexAxis:'y',plugins:{title:{display:true,text:'Vendas por vendedor'}}}});
+new Chart(document.getElementById('produtos'),{type:'bar',data:{labels:p.slice(0,8).map(x=>x.produto),datasets:[{label:'Faturamento',data:p.slice(0,8).map(x=>x.faturamento)}]},options:{plugins:{title:{display:true,text:'Produtos por faturamento'}}}});
+}catch(e){document.getElementById('erro').textContent=e.message}}
+showDash();
+</script>
+</body></html>
