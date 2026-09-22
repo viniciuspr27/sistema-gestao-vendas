@@ -798,6 +798,119 @@ gap:12px
 }
 .login-panel-inner{padding:22px}
 }
+/* ===== BOTÃO ATUALIZAR DADOS ===== */
+
+.update-excel-btn{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+
+  border:1px solid rgba(96,165,250,.45);
+  background:linear-gradient(135deg,#2563eb,#06b6d4);
+  color:#fff;
+
+  padding:11px 17px;
+  border-radius:11px;
+
+  font-weight:700;
+  font-size:12px;
+  letter-spacing:.1px;
+
+  cursor:pointer;
+
+  box-shadow:
+    0 6px 18px rgba(37,99,235,.22),
+    inset 0 1px 0 rgba(255,255,255,.2);
+
+  overflow:hidden;
+
+  transition:
+    transform .22s ease,
+    box-shadow .22s ease,
+    filter .22s ease;
+}
+
+.update-excel-btn::before{
+  content:"";
+  position:absolute;
+  top:0;
+  left:-120%;
+  width:70%;
+  height:100%;
+
+  background:linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.28),
+    transparent
+  );
+
+  transform:skewX(-20deg);
+  transition:left .55s ease;
+}
+
+.update-excel-btn:hover{
+  transform:translateY(-2px);
+  filter:saturate(1.12);
+
+  box-shadow:
+    0 10px 28px rgba(37,99,235,.34),
+    0 0 18px rgba(6,182,212,.16),
+    inset 0 1px 0 rgba(255,255,255,.25);
+}
+
+.update-excel-btn:hover::before{
+  left:140%;
+}
+
+.update-excel-btn:active{
+  transform:translateY(0) scale(.97);
+
+  box-shadow:
+    0 4px 12px rgba(37,99,235,.22),
+    inset 0 2px 5px rgba(0,0,0,.12);
+}
+
+.update-excel-btn span{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  font-size:18px;
+  line-height:1;
+
+  transition:transform .3s ease;
+}
+
+.update-excel-btn:hover span{
+  transform:rotate(90deg);
+}
+
+.update-excel-btn:disabled{
+  opacity:.9;
+  cursor:wait;
+  transform:none;
+  filter:none;
+
+  box-shadow:
+    0 6px 18px rgba(37,99,235,.18);
+}
+
+.update-excel-btn:disabled span{
+  animation:excelSpin .8s linear infinite;
+}
+
+@keyframes excelSpin{
+  from{
+    transform:rotate(0deg);
+  }
+
+  to{
+    transform:rotate(360deg);
+  }
+}
 </style>
 <link rel="stylesheet" href="/mobile.css">
 </head>
