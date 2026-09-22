@@ -1,5 +1,12 @@
-require('dotenv').config({
-  path: require('path').resolve(__dirname, '../.env')
+const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config({
+  path: path.resolve(__dirname, '../.env.development.local')
+});
+
+dotenv.config({
+  path: path.resolve(__dirname, '../.env')
 });
 
 const express = require('express');
@@ -46,9 +53,21 @@ app.use(
   })
 );
 
-app.use(express.static('public'));
+/* ================================
+   FRONTEND
+================================ */
 
-/* LOGIN */
+const publicPath = path.join(__dirname, '../public');
+
+app.use(express.static(publicPath));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(publicPath, 'index.html'));
+});
+
+/* ================================
+   LOGIN
+================================ */
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -58,10 +77,17 @@ const loginSchema = z.object({
 app.get('/api/health', async (req, res) => {
   try {
     await sql`SELECT 1`;
-    res.json({ status: 'ok', banco: 'neon' });
+
+    res.json({
+      status: 'ok',
+      banco: 'neon'
+    });
   } catch (erro) {
     console.error(erro);
-    res.status(500).json({ status: 'erro' });
+
+    res.status(500).json({
+      status: 'erro'
+    });
   }
 });
 
@@ -78,7 +104,12 @@ app.post('/api/login', async (req, res) => {
     const { email, senha } = parsed.data;
 
     const rows = await sql`
-      SELECT id, nome, email, senha_hash, perfil
+      SELECT
+        id,
+        nome,
+        email,
+        senha_hash,
+        perfil
       FROM usuarios
       WHERE email = ${email.toLowerCase()}
       LIMIT 1
@@ -116,13 +147,16 @@ app.post('/api/login', async (req, res) => {
     });
   } catch (erro) {
     console.error('Erro no login:', erro);
+
     res.status(500).json({
       erro: 'Erro interno no login.'
     });
   }
 });
 
-/* FILTROS */
+/* ================================
+   FILTROS
+================================ */
 
 function obterFiltros(query) {
   const {
@@ -140,7 +174,10 @@ function obterFiltros(query) {
       throw new Error('Data inicial inválida.');
     }
 
-    conditions.push(`data >= $${params.length + 1}`);
+    conditions.push(
+      `data >= $${params.length + 1}`
+    );
+
     params.push(dataInicio);
   }
 
@@ -149,7 +186,10 @@ function obterFiltros(query) {
       throw new Error('Data final inválida.');
     }
 
-    conditions.push(`data <= $${params.length + 1}`);
+    conditions.push(
+      `data <= $${params.length + 1}`
+    );
+
     params.push(dataFim);
   }
 
@@ -160,12 +200,18 @@ function obterFiltros(query) {
   }
 
   if (vendedor) {
-    conditions.push(`vendedor = $${params.length + 1}`);
+    conditions.push(
+      `vendedor = $${params.length + 1}`
+    );
+
     params.push(vendedor);
   }
 
   if (produto) {
-    conditions.push(`produto = $${params.length + 1}`);
+    conditions.push(
+      `produto = $${params.length + 1}`
+    );
+
     params.push(produto);
   }
 
@@ -180,7 +226,9 @@ function obterFiltros(query) {
   };
 }
 
-/* OPÇÕES DOS FILTROS */
+/* ================================
+   OPÇÕES DOS FILTROS
+================================ */
 
 app.get('/api/filtros', authRequired, async (req, res) => {
   try {
@@ -202,20 +250,25 @@ app.get('/api/filtros', authRequired, async (req, res) => {
     });
   } catch (erro) {
     console.error(erro);
+
     res.status(500).json({
       erro: 'Erro ao carregar filtros.'
     });
   }
 });
 
-/* KPIs */
+/* ================================
+   KPIs
+================================ */
 
 app.get('/api/kpis', authRequired, async (req, res) => {
   try {
-    const { where, params } = obterFiltros(req.query);
+    const { where, params } =
+      obterFiltros(req.query);
 
     const query = `
       SELECT
+
         COALESCE(
           SUM(
             CASE
@@ -263,146 +316,195 @@ app.get('/api/kpis', authRequired, async (req, res) => {
       ${where}
     `;
 
-    const rows = await sql.query(query, params);
+    const rows = await sql.query(
+      query,
+      params
+    );
 
     res.json(rows[0]);
   } catch (erro) {
     console.error(erro);
+
     res.status(400).json({
       erro: erro.message
     });
   }
 });
 
-/* VENDAS MENSAIS */
+/* ================================
+   VENDAS MENSAIS
+================================ */
 
-app.get('/api/vendas-mensais', authRequired, async (req, res) => {
-  try {
-    const { where, params } = obterFiltros(req.query);
+app.get(
+  '/api/vendas-mensais',
+  authRequired,
+  async (req, res) => {
+    try {
+      const { where, params } =
+        obterFiltros(req.query);
 
-    const query = `
-      SELECT
-        TO_CHAR(data::date, 'YYYY-MM') AS mes,
+      const query = `
+        SELECT
 
-        ROUND(
+          TO_CHAR(
+            data::date,
+            'YYYY-MM'
+          ) AS mes,
+
+          ROUND(
+            SUM(
+              CASE
+                WHEN status = 'Pago'
+                THEN faturamento
+                ELSE 0
+              END
+            )::numeric,
+            2
+          ) AS faturamento
+
+        FROM vendas
+
+        ${where}
+
+        GROUP BY
+          TO_CHAR(data::date, 'YYYY-MM')
+
+        ORDER BY mes
+      `;
+
+      const rows = await sql.query(
+        query,
+        params
+      );
+
+      res.json(rows);
+    } catch (erro) {
+      console.error(erro);
+
+      res.status(400).json({
+        erro: erro.message
+      });
+    }
+  }
+);
+
+/* ================================
+   VENDEDORES
+================================ */
+
+app.get(
+  '/api/vendedores',
+  authRequired,
+  async (req, res) => {
+    try {
+      const { where, params } =
+        obterFiltros(req.query);
+
+      const query = `
+        SELECT
+
+          vendedor,
+
+          ROUND(
+            SUM(
+              CASE
+                WHEN status = 'Pago'
+                THEN faturamento
+                ELSE 0
+              END
+            )::numeric,
+            2
+          ) AS faturamento
+
+        FROM vendas
+
+        ${where}
+
+        GROUP BY vendedor
+
+        ORDER BY faturamento DESC
+      `;
+
+      const rows = await sql.query(
+        query,
+        params
+      );
+
+      res.json(rows);
+    } catch (erro) {
+      console.error(erro);
+
+      res.status(400).json({
+        erro: erro.message
+      });
+    }
+  }
+);
+
+/* ================================
+   PRODUTOS
+================================ */
+
+app.get(
+  '/api/produtos',
+  authRequired,
+  async (req, res) => {
+    try {
+      const { where, params } =
+        obterFiltros(req.query);
+
+      const query = `
+        SELECT
+
+          produto,
+
           SUM(
             CASE
               WHEN status = 'Pago'
-              THEN faturamento
+              THEN quantidade
               ELSE 0
             END
-          )::numeric,
-          2
-        ) AS faturamento
+          ) AS itens,
 
-      FROM vendas
+          ROUND(
+            SUM(
+              CASE
+                WHEN status = 'Pago'
+                THEN faturamento
+                ELSE 0
+              END
+            )::numeric,
+            2
+          ) AS faturamento
 
-      ${where}
+        FROM vendas
 
-      GROUP BY TO_CHAR(data::date, 'YYYY-MM')
-      ORDER BY mes
-    `;
+        ${where}
 
-    const rows = await sql.query(query, params);
+        GROUP BY produto
 
-    res.json(rows);
-  } catch (erro) {
-    console.error(erro);
-    res.status(400).json({
-      erro: erro.message
-    });
+        ORDER BY faturamento DESC
+      `;
+
+      const rows = await sql.query(
+        query,
+        params
+      );
+
+      res.json(rows);
+    } catch (erro) {
+      console.error(erro);
+
+      res.status(400).json({
+        erro: erro.message
+      });
+    }
   }
-});
+);
 
-/* VENDEDORES */
-
-app.get('/api/vendedores', authRequired, async (req, res) => {
-  try {
-    const { where, params } = obterFiltros(req.query);
-
-    const query = `
-      SELECT
-        vendedor,
-
-        ROUND(
-          SUM(
-            CASE
-              WHEN status = 'Pago'
-              THEN faturamento
-              ELSE 0
-            END
-          )::numeric,
-          2
-        ) AS faturamento
-
-      FROM vendas
-
-      ${where}
-
-      GROUP BY vendedor
-      ORDER BY faturamento DESC
-    `;
-
-    const rows = await sql.query(query, params);
-
-    res.json(rows);
-  } catch (erro) {
-    console.error(erro);
-    res.status(400).json({
-      erro: erro.message
-    });
-  }
-});
-
-/* PRODUTOS */
-
-app.get('/api/produtos', authRequired, async (req, res) => {
-  try {
-    const { where, params } = obterFiltros(req.query);
-
-    const query = `
-      SELECT
-        produto,
-
-        SUM(
-          CASE
-            WHEN status = 'Pago'
-            THEN quantidade
-            ELSE 0
-          END
-        ) AS itens,
-
-        ROUND(
-          SUM(
-            CASE
-              WHEN status = 'Pago'
-              THEN faturamento
-              ELSE 0
-            END
-          )::numeric,
-          2
-        ) AS faturamento
-
-      FROM vendas
-
-      ${where}
-
-      GROUP BY produto
-      ORDER BY faturamento DESC
-    `;
-
-    const rows = await sql.query(query, params);
-
-    res.json(rows);
-  } catch (erro) {
-    console.error(erro);
-    res.status(400).json({
-      erro: erro.message
-    });
-  }
-});
-
-/* LISTAGEM DE VENDAS */
+/* ================================
+   LISTAGEM DE VENDAS
+================================ */
 
 app.get(
   '/api/vendas',
@@ -415,7 +517,8 @@ app.get(
         200
       );
 
-      const { where, params } = obterFiltros(req.query);
+      const { where, params } =
+        obterFiltros(req.query);
 
       const query = `
         SELECT *
@@ -433,6 +536,7 @@ app.get(
       res.json(rows);
     } catch (erro) {
       console.error(erro);
+
       res.status(400).json({
         erro: erro.message
       });
@@ -440,7 +544,9 @@ app.get(
   }
 );
 
-/* EXPORTAÇÃO PARA EXCEL */
+/* ================================
+   EXPORTAÇÃO PARA EXCEL
+================================ */
 
 app.get(
   '/api/vendas/exportar',
@@ -448,10 +554,12 @@ app.get(
   roleRequired('admin', 'analista'),
   async (req, res) => {
     try {
-      const { where, params } = obterFiltros(req.query);
+      const { where, params } =
+        obterFiltros(req.query);
 
       const query = `
         SELECT
+
           id AS "ID",
           data AS "Data",
           produto AS "Produto",
@@ -471,9 +579,13 @@ app.get(
         ORDER BY data DESC
       `;
 
-      const rows = await sql.query(query, params);
+      const rows = await sql.query(
+        query,
+        params
+      );
 
-      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const worksheet =
+        XLSX.utils.json_to_sheet(rows);
 
       worksheet['!cols'] = [
         { wch: 8 },
@@ -489,7 +601,8 @@ app.get(
         { wch: 18 }
       ];
 
-      const workbook = XLSX.utils.book_new();
+      const workbook =
+        XLSX.utils.book_new();
 
       XLSX.utils.book_append_sheet(
         workbook,
@@ -497,10 +610,13 @@ app.get(
         'Vendas'
       );
 
-      const arquivo = XLSX.write(workbook, {
-        type: 'buffer',
-        bookType: 'xlsx'
-      });
+      const arquivo = XLSX.write(
+        workbook,
+        {
+          type: 'buffer',
+          bookType: 'xlsx'
+        }
+      );
 
       const nomeArquivo =
         `relatorio-vendas-${new Date()
@@ -531,19 +647,26 @@ app.get(
   }
 );
 
-/* TRATAMENTO DE ERROS */
+/* ================================
+   TRATAMENTO DE ERROS
+================================ */
 
-app.use((err, req, res, next) => {
-  console.error(err);
+app.use(
+  (err, req, res, next) => {
+    console.error(err);
 
-  res.status(500).json({
-    erro: 'Erro interno do servidor.'
-  });
-});
+    res.status(500).json({
+      erro: 'Erro interno do servidor.'
+    });
+  }
+);
 
-/* SERVIDOR */
+/* ================================
+   SERVIDOR
+================================ */
 
-const port = Number(process.env.PORT) || 3000;
+const port =
+  Number(process.env.PORT) || 3000;
 
 app.listen(port, () => {
   console.log(
