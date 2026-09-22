@@ -2,3 +2,7 @@
 node_modules/
 data/
 *.env
+
+.vercel
+
+.env.development.local

@@ -11,13 +11,11 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const XLSX = require('xlsx');
 
-const db = require('./db');
+const sql = require('./db');
 const { authRequired, roleRequired } = require('./auth');
 
 if (!process.env.JWT_SECRET) {
-  throw new Error(
-    'JWT_SECRET não configurado. Copie .env.example para .env.'
-  );
+  throw new Error('JWT_SECRET não configurado.');
 }
 
 const app = express();
@@ -50,95 +48,81 @@ app.use(
 
 app.use(express.static('public'));
 
-/* =====================================================
-   LOGIN
-===================================================== */
+/* LOGIN */
 
 const loginSchema = z.object({
   email: z.string().email(),
   senha: z.string().min(6).max(100)
 });
 
-/* =====================================================
-   HEALTH
-===================================================== */
-
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok'
-  });
+app.get('/api/health', async (req, res) => {
+  try {
+    await sql`SELECT 1`;
+    res.json({ status: 'ok', banco: 'neon' });
+  } catch (erro) {
+    console.error(erro);
+    res.status(500).json({ status: 'erro' });
+  }
 });
 
-/* =====================================================
-   LOGIN
-===================================================== */
+app.post('/api/login', async (req, res) => {
+  try {
+    const parsed = loginSchema.safeParse(req.body);
 
-app.post('/api/login', (req, res) => {
-  const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        erro: 'Dados de login inválidos.'
+      });
+    }
 
-  if (!parsed.success) {
-    return res.status(400).json({
-      erro: 'Dados de login inválidos.'
-    });
-  }
+    const { email, senha } = parsed.data;
 
-  const {
-    email,
-    senha
-  } = parsed.data;
-
-  const user = db
-    .prepare(`
-      SELECT
-        id,
-        nome,
-        email,
-        senha_hash,
-        perfil
+    const rows = await sql`
+      SELECT id, nome, email, senha_hash, perfil
       FROM usuarios
-      WHERE email = ?
-    `)
-    .get(email.toLowerCase());
+      WHERE email = ${email.toLowerCase()}
+      LIMIT 1
+    `;
 
-  if (
-    !user ||
-    !bcrypt.compareSync(
-      senha,
-      user.senha_hash
-    )
-  ) {
-    return res.status(401).json({
-      erro: 'E-mail ou senha inválidos.'
+    const user = rows[0];
+
+    if (!user || !bcrypt.compareSync(senha, user.senha_hash)) {
+      return res.status(401).json({
+        erro: 'E-mail ou senha inválidos.'
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        nome: user.nome,
+        email: user.email,
+        perfil: user.perfil
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: '2h'
+      }
+    );
+
+    res.json({
+      token,
+      usuario: {
+        id: user.id,
+        nome: user.nome,
+        email: user.email,
+        perfil: user.perfil
+      }
+    });
+  } catch (erro) {
+    console.error('Erro no login:', erro);
+    res.status(500).json({
+      erro: 'Erro interno no login.'
     });
   }
-
-  const token = jwt.sign(
-    {
-      id: user.id,
-      nome: user.nome,
-      email: user.email,
-      perfil: user.perfil
-    },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: '2h'
-    }
-  );
-
-  res.json({
-    token,
-    usuario: {
-      id: user.id,
-      nome: user.nome,
-      email: user.email,
-      perfil: user.perfil
-    }
-  });
 });
 
-/* =====================================================
-   FILTROS
-===================================================== */
+/* FILTROS */
 
 function obterFiltros(query) {
   const {
@@ -153,43 +137,35 @@ function obterFiltros(query) {
 
   if (dataInicio) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio)) {
-      throw new Error(
-        'Data inicial inválida.'
-      );
+      throw new Error('Data inicial inválida.');
     }
 
-    conditions.push('data >= ?');
+    conditions.push(`data >= $${params.length + 1}`);
     params.push(dataInicio);
   }
 
   if (dataFim) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
-      throw new Error(
-        'Data final inválida.'
-      );
+      throw new Error('Data final inválida.');
     }
 
-    conditions.push('data <= ?');
+    conditions.push(`data <= $${params.length + 1}`);
     params.push(dataFim);
   }
 
-  if (
-    dataInicio &&
-    dataFim &&
-    dataInicio > dataFim
-  ) {
+  if (dataInicio && dataFim && dataInicio > dataFim) {
     throw new Error(
       'A data inicial não pode ser maior que a data final.'
     );
   }
 
   if (vendedor) {
-    conditions.push('vendedor = ?');
+    conditions.push(`vendedor = $${params.length + 1}`);
     params.push(vendedor);
   }
 
   if (produto) {
-    conditions.push('produto = ?');
+    conditions.push(`produto = $${params.length + 1}`);
     params.push(produto);
   }
 
@@ -204,298 +180,259 @@ function obterFiltros(query) {
   };
 }
 
-/* =====================================================
-   OPÇÕES DOS FILTROS
-===================================================== */
+/* OPÇÕES DOS FILTROS */
 
-app.get(
-  '/api/filtros',
-  authRequired,
-  (req, res) => {
-    const vendedores = db
-      .prepare(`
-        SELECT DISTINCT vendedor
-        FROM vendas
-        ORDER BY vendedor
-      `)
-      .all();
+app.get('/api/filtros', authRequired, async (req, res) => {
+  try {
+    const vendedores = await sql`
+      SELECT DISTINCT vendedor
+      FROM vendas
+      ORDER BY vendedor
+    `;
 
-    const produtos = db
-      .prepare(`
-        SELECT DISTINCT produto
-        FROM vendas
-        ORDER BY produto
-      `)
-      .all();
+    const produtos = await sql`
+      SELECT DISTINCT produto
+      FROM vendas
+      ORDER BY produto
+    `;
 
     res.json({
       vendedores,
       produtos
     });
+  } catch (erro) {
+    console.error(erro);
+    res.status(500).json({
+      erro: 'Erro ao carregar filtros.'
+    });
   }
-);
+});
 
-/* =====================================================
-   KPIs
-===================================================== */
+/* KPIs */
 
-app.get(
-  '/api/kpis',
-  authRequired,
-  (req, res) => {
-    try {
-      const {
-        where,
-        params
-      } = obterFiltros(req.query);
+app.get('/api/kpis', authRequired, async (req, res) => {
+  try {
+    const { where, params } = obterFiltros(req.query);
 
-      const kpi = db
-        .prepare(`
-          SELECT
-            COALESCE(
-              SUM(
-                CASE
-                  WHEN status = 'Pago'
-                  THEN faturamento
-                  ELSE 0
-                END
-              ),
-              0
-            ) AS faturamento_pago,
+    const query = `
+      SELECT
+        COALESCE(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN faturamento
+              ELSE 0
+            END
+          ),
+          0
+        ) AS faturamento_pago,
 
-            COALESCE(
-              SUM(
-                CASE
-                  WHEN status = 'Pago'
-                  THEN 1
-                  ELSE 0
-                END
-              ),
-              0
-            ) AS vendas_pagas,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS vendas_pagas,
 
-            COALESCE(
-              AVG(
-                CASE
-                  WHEN status = 'Pago'
-                  THEN faturamento
-                END
-              ),
-              0
-            ) AS ticket_medio,
+        COALESCE(
+          AVG(
+            CASE
+              WHEN status = 'Pago'
+              THEN faturamento
+            END
+          ),
+          0
+        ) AS ticket_medio,
 
-            COALESCE(
-              SUM(
-                CASE
-                  WHEN status = 'Pago'
-                  THEN quantidade
-                  ELSE 0
-                END
-              ),
-              0
-            ) AS itens_vendidos
+        COALESCE(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN quantidade
+              ELSE 0
+            END
+          ),
+          0
+        ) AS itens_vendidos
 
-          FROM vendas
-          ${where}
-        `)
-        .get(...params);
+      FROM vendas
+      ${where}
+    `;
 
-      res.json(kpi);
-    } catch (erro) {
-      res.status(400).json({
-        erro: erro.message
-      });
-    }
+    const rows = await sql.query(query, params);
+
+    res.json(rows[0]);
+  } catch (erro) {
+    console.error(erro);
+    res.status(400).json({
+      erro: erro.message
+    });
   }
-);
+});
 
-/* =====================================================
-   VENDAS MENSAIS
-===================================================== */
+/* VENDAS MENSAIS */
 
-app.get(
-  '/api/vendas-mensais',
-  authRequired,
-  (req, res) => {
-    try {
-      const {
-        where,
-        params
-      } = obterFiltros(req.query);
+app.get('/api/vendas-mensais', authRequired, async (req, res) => {
+  try {
+    const { where, params } = obterFiltros(req.query);
 
-      const rows = db
-        .prepare(`
-          SELECT
-            substr(data, 1, 7) AS mes,
+    const query = `
+      SELECT
+        TO_CHAR(data::date, 'YYYY-MM') AS mes,
 
-            ROUND(
-              SUM(
-                CASE
-                  WHEN status = 'Pago'
-                  THEN faturamento
-                  ELSE 0
-                END
-              ),
-              2
-            ) AS faturamento
+        ROUND(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN faturamento
+              ELSE 0
+            END
+          )::numeric,
+          2
+        ) AS faturamento
 
-          FROM vendas
-          ${where}
+      FROM vendas
 
-          GROUP BY substr(data, 1, 7)
+      ${where}
 
-          ORDER BY mes
-        `)
-        .all(...params);
+      GROUP BY TO_CHAR(data::date, 'YYYY-MM')
+      ORDER BY mes
+    `;
 
-      res.json(rows);
-    } catch (erro) {
-      res.status(400).json({
-        erro: erro.message
-      });
-    }
+    const rows = await sql.query(query, params);
+
+    res.json(rows);
+  } catch (erro) {
+    console.error(erro);
+    res.status(400).json({
+      erro: erro.message
+    });
   }
-);
+});
 
-/* =====================================================
-   VENDEDORES
-===================================================== */
+/* VENDEDORES */
 
-app.get(
-  '/api/vendedores',
-  authRequired,
-  (req, res) => {
-    try {
-      const {
-        where,
-        params
-      } = obterFiltros(req.query);
+app.get('/api/vendedores', authRequired, async (req, res) => {
+  try {
+    const { where, params } = obterFiltros(req.query);
 
-      const rows = db
-        .prepare(`
-          SELECT
-            vendedor,
+    const query = `
+      SELECT
+        vendedor,
 
-            ROUND(
-              SUM(
-                CASE
-                  WHEN status = 'Pago'
-                  THEN faturamento
-                  ELSE 0
-                END
-              ),
-              2
-            ) AS faturamento
+        ROUND(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN faturamento
+              ELSE 0
+            END
+          )::numeric,
+          2
+        ) AS faturamento
 
-          FROM vendas
-          ${where}
+      FROM vendas
 
-          GROUP BY vendedor
+      ${where}
 
-          ORDER BY faturamento DESC
-        `)
-        .all(...params);
+      GROUP BY vendedor
+      ORDER BY faturamento DESC
+    `;
 
-      res.json(rows);
-    } catch (erro) {
-      res.status(400).json({
-        erro: erro.message
-      });
-    }
+    const rows = await sql.query(query, params);
+
+    res.json(rows);
+  } catch (erro) {
+    console.error(erro);
+    res.status(400).json({
+      erro: erro.message
+    });
   }
-);
+});
 
-/* =====================================================
-   PRODUTOS
-===================================================== */
+/* PRODUTOS */
 
-app.get(
-  '/api/produtos',
-  authRequired,
-  (req, res) => {
-    try {
-      const {
-        where,
-        params
-      } = obterFiltros(req.query);
+app.get('/api/produtos', authRequired, async (req, res) => {
+  try {
+    const { where, params } = obterFiltros(req.query);
 
-      const rows = db
-        .prepare(`
-          SELECT
-            produto,
+    const query = `
+      SELECT
+        produto,
 
-            SUM(
-              CASE
-                WHEN status = 'Pago'
-                THEN quantidade
-                ELSE 0
-              END
-            ) AS itens,
+        SUM(
+          CASE
+            WHEN status = 'Pago'
+            THEN quantidade
+            ELSE 0
+          END
+        ) AS itens,
 
-            ROUND(
-              SUM(
-                CASE
-                  WHEN status = 'Pago'
-                  THEN faturamento
-                  ELSE 0
-                END
-              ),
-              2
-            ) AS faturamento
+        ROUND(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN faturamento
+              ELSE 0
+            END
+          )::numeric,
+          2
+        ) AS faturamento
 
-          FROM vendas
-          ${where}
+      FROM vendas
 
-          GROUP BY produto
+      ${where}
 
-          ORDER BY faturamento DESC
-        `)
-        .all(...params);
+      GROUP BY produto
+      ORDER BY faturamento DESC
+    `;
 
-      res.json(rows);
-    } catch (erro) {
-      res.status(400).json({
-        erro: erro.message
-      });
-    }
+    const rows = await sql.query(query, params);
+
+    res.json(rows);
+  } catch (erro) {
+    console.error(erro);
+    res.status(400).json({
+      erro: erro.message
+    });
   }
-);
+});
 
-/* =====================================================
-   LISTAGEM DE VENDAS
-===================================================== */
+/* LISTAGEM DE VENDAS */
 
 app.get(
   '/api/vendas',
   authRequired,
   roleRequired('admin', 'analista'),
-  (req, res) => {
+  async (req, res) => {
     try {
       const limit = Math.min(
         Number(req.query.limit) || 50,
         200
       );
 
-      const {
-        where,
-        params
-      } = obterFiltros(req.query);
+      const { where, params } = obterFiltros(req.query);
 
-      const rows = db
-        .prepare(`
-          SELECT *
-          FROM vendas
-          ${where}
-          ORDER BY data DESC
-          LIMIT ?
-        `)
-        .all(
-          ...params,
-          limit
-        );
+      const query = `
+        SELECT *
+        FROM vendas
+        ${where}
+        ORDER BY data DESC
+        LIMIT $${params.length + 1}
+      `;
+
+      const rows = await sql.query(
+        query,
+        [...params, limit]
+      );
 
       res.json(rows);
     } catch (erro) {
+      console.error(erro);
       res.status(400).json({
         erro: erro.message
       });
@@ -503,58 +440,40 @@ app.get(
   }
 );
 
-/* =====================================================
-   EXPORTAÇÃO PARA EXCEL
-===================================================== */
+/* EXPORTAÇÃO PARA EXCEL */
 
 app.get(
   '/api/vendas/exportar',
   authRequired,
   roleRequired('admin', 'analista'),
-  (req, res) => {
+  async (req, res) => {
     try {
-      const {
-        where,
-        params
-      } = obterFiltros(req.query);
+      const { where, params } = obterFiltros(req.query);
 
-      const rows = db
-        .prepare(`
-          SELECT
-            id AS ID,
-            data AS Data,
-            produto AS Produto,
-            categoria AS Categoria,
-            cliente AS Cliente,
-            vendedor AS Vendedor,
-            quantidade AS Quantidade,
-            preco_unitario AS 'Preço Unitário',
-            pagamento AS Pagamento,
-            status AS Status,
-            faturamento AS Faturamento
-          FROM vendas
-          ${where}
-          ORDER BY data DESC
-        `)
-        .all(...params);
+      const query = `
+        SELECT
+          id AS "ID",
+          data AS "Data",
+          produto AS "Produto",
+          categoria AS "Categoria",
+          cliente AS "Cliente",
+          vendedor AS "Vendedor",
+          quantidade AS "Quantidade",
+          preco_unitario AS "Preço Unitário",
+          pagamento AS "Pagamento",
+          status AS "Status",
+          faturamento AS "Faturamento"
 
-      const dadosExcel = rows.map((venda) => ({
-        ID: venda.ID,
-        Data: venda.Data,
-        Produto: venda.Produto,
-        Categoria: venda.Categoria,
-        Cliente: venda.Cliente,
-        Vendedor: venda.Vendedor,
-        Quantidade: venda.Quantidade,
-        'Preço Unitário': venda['Preço Unitário'],
-        Pagamento: venda.Pagamento,
-        Status: venda.Status,
-        Faturamento: venda.Faturamento
-      }));
+        FROM vendas
 
-      const worksheet = XLSX.utils.json_to_sheet(
-        dadosExcel
-      );
+        ${where}
+
+        ORDER BY data DESC
+      `;
+
+      const rows = await sql.query(query, params);
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
 
       worksheet['!cols'] = [
         { wch: 8 },
@@ -578,13 +497,10 @@ app.get(
         'Vendas'
       );
 
-      const arquivo = XLSX.write(
-        workbook,
-        {
-          type: 'buffer',
-          bookType: 'xlsx'
-        }
-      );
+      const arquivo = XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx'
+      });
 
       const nomeArquivo =
         `relatorio-vendas-${new Date()
@@ -602,7 +518,6 @@ app.get(
       );
 
       res.send(arquivo);
-
     } catch (erro) {
       console.error(
         'Erro ao exportar vendas:',
@@ -616,32 +531,22 @@ app.get(
   }
 );
 
-/* =====================================================
-   TRATAMENTO DE ERROS
-===================================================== */
+/* TRATAMENTO DE ERROS */
 
-app.use(
-  (err, req, res, next) => {
-    console.error(err);
+app.use((err, req, res, next) => {
+  console.error(err);
 
-    res.status(500).json({
-      erro: 'Erro interno do servidor.'
-    });
-  }
-);
+  res.status(500).json({
+    erro: 'Erro interno do servidor.'
+  });
+});
 
-/* =====================================================
-   SERVIDOR
-===================================================== */
+/* SERVIDOR */
 
-const port =
-  Number(process.env.PORT) || 3000;
+const port = Number(process.env.PORT) || 3000;
 
-app.listen(
-  port,
-  () => {
-    console.log(
-      `Sistema rodando em http://localhost:${port}`
-    );
-  }
-);
+app.listen(port, () => {
+  console.log(
+    `Sistema rodando em http://localhost:${port}`
+  );
+});
