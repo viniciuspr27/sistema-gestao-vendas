@@ -17,6 +17,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const XLSX = require('xlsx');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const sql = require('./db');
 const { authRequired, roleRequired } = require('./auth');
@@ -536,6 +538,184 @@ app.get(
       res.json(rows);
     } catch (erro) {
       console.error(erro);
+
+      res.status(400).json({
+        erro: erro.message
+      });
+    }
+  }
+);
+
+/* ================================
+   IMPORTAÇÃO DE EXCEL
+================================ */
+
+app.post(
+  '/api/vendas/importar',
+  authRequired,
+  roleRequired('admin'),
+  upload.single('arquivo'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          erro: 'Nenhum arquivo Excel foi enviado.'
+        });
+      }
+
+      const workbook = XLSX.read(req.file.buffer, {
+        type: 'buffer'
+      });
+
+      const sheet = workbook.Sheets['Vendas'];
+
+      if (!sheet) {
+        return res.status(400).json({
+          erro: 'A aba "Vendas" não foi encontrada no arquivo.'
+        });
+      }
+
+      const dados = XLSX.utils.sheet_to_json(sheet);
+
+      if (!dados.length) {
+        return res.status(400).json({
+          erro: 'O arquivo não possui registros.'
+        });
+      }
+
+      const vendas = [];
+      const ids = new Set();
+
+      for (let i = 0; i < dados.length; i++) {
+        const venda = dados[i];
+        const linha = i + 2;
+
+        const id = i + 1;
+
+        const valorData = venda['Data'];
+        let dataFormatada;
+
+        if (typeof valorData === 'number') {
+          const dataExcel = XLSX.SSF.parse_date_code(valorData);
+
+          if (!dataExcel) {
+            throw new Error(`Data inválida na linha ${linha}.`);
+          }
+
+          dataFormatada =
+            `${dataExcel.y}-${String(dataExcel.m).padStart(2, '0')}-${String(dataExcel.d).padStart(2, '0')}`;
+        } else {
+          const data = new Date(valorData);
+
+          if (Number.isNaN(data.getTime())) {
+            throw new Error(`Data inválida na linha ${linha}.`);
+          }
+
+          dataFormatada =
+            `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+        }
+
+        let pagamento = venda['Forma de Pagamento'];
+
+        if (pagamento === 'Cartão de Crédito') {
+          pagamento = 'Cartão';
+        } else if (
+          pagamento === 'Transferência' ||
+          pagamento === 'Pix'
+        ) {
+          pagamento = 'Pix';
+        } else if (pagamento === 'Boleto') {
+          pagamento = 'Boleto';
+        }
+
+        if (!['Pix', 'Cartão', 'Boleto'].includes(pagamento)) {
+          throw new Error(`Forma de pagamento inválida na linha ${linha}.`);
+        }
+
+        let status = venda['Status'];
+
+        if (status === 'Concluída') {
+          status = 'Pago';
+        } else if (status === 'Cancelada') {
+          status = 'Cancelado';
+        }
+
+        if (!['Pago', 'Pendente', 'Cancelado'].includes(status)) {
+          throw new Error(`Status inválido na linha ${linha}.`);
+        }
+
+        vendas.push({
+          id,
+          data: dataFormatada,
+          produto: venda['Produto'],
+          categoria: venda['Categoria'],
+          cliente: venda['Cliente'],
+          vendedor: venda['Vendedor'],
+          quantidade: Number(venda['Quantidade']),
+          preco_unitario: Number(venda['Preço Unitário']),
+          pagamento,
+          status,
+          faturamento: Number(venda['Valor Líquido'])
+        });
+      }
+
+      /*
+        Monta todos os valores antes de alterar o banco.
+      */
+      /*
+        Uma única operação para apagar e inserir os dados.
+      */
+      await sql.transaction([
+        sql`DELETE FROM vendas`,
+        sql`
+          INSERT INTO vendas (
+            id,
+            data,
+            produto,
+            categoria,
+            cliente,
+            vendedor,
+            quantidade,
+            preco_unitario,
+            pagamento,
+            status,
+            faturamento
+          )
+          SELECT
+            x.id,
+            x.data::date,
+            x.produto,
+            x.categoria,
+            x.cliente,
+            x.vendedor,
+            x.quantidade,
+            x.preco_unitario,
+            x.pagamento,
+            x.status,
+            x.faturamento
+          FROM json_to_recordset(${JSON.stringify(vendas)}) AS x(
+            id integer,
+            data text,
+            produto text,
+            categoria text,
+            cliente text,
+            vendedor text,
+            quantidade integer,
+            preco_unitario numeric,
+            pagamento text,
+            status text,
+            faturamento numeric
+          )
+        `
+      ]);
+
+      res.json({
+        sucesso: true,
+        mensagem: 'Dados atualizados com sucesso.',
+        registros: vendas.length
+      });
+    } catch (erro) {
+      console.error('Erro ao importar vendas:', erro);
 
       res.status(400).json({
         erro: erro.message

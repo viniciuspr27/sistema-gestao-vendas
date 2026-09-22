@@ -409,6 +409,41 @@ border-radius:20px;
 font-size:10px;
 font-weight:700
 }
+.top-actions{
+display:flex;
+align-items:center;
+gap:10px;
+}
+
+.update-excel-btn{
+display:flex;
+align-items:center;
+gap:8px;
+border:1px solid rgba(255,255,255,.14);
+background:rgba(255,255,255,.06);
+color:#fff;
+padding:10px 15px;
+border-radius:10px;
+font-weight:600;
+transition:.2s ease;
+}
+
+.update-excel-btn span{
+font-size:18px;
+line-height:1;
+}
+
+.update-excel-btn:hover{
+background:rgba(255,255,255,.12);
+transform:translateY(-1px);
+}
+
+.update-excel-btn:disabled{
+opacity:.65;
+cursor:not-allowed;
+transform:none;
+}
+
 .logout-btn{
 border:1px solid var(--border);
 background:#fff;
@@ -998,9 +1033,26 @@ Visão geral do desempenho comercial
 
 </div>
 
+<div class="top-actions">
+
+<button class="update-excel-btn" onclick="abrirImportacaoExcel()">
+<span>↻</span>
+Atualizar dados
+</button>
+
 <button class="logout-btn" onclick="sair()">
 Sair
 </button>
+
+</div>
+
+<input
+id="arquivoExcel"
+type="file"
+accept=".xlsx,.xls"
+hidden
+onchange="importarExcel(this)"
+>
 
 </div>
 
@@ -1576,6 +1628,84 @@ return String(v??"")
 
 }
 
+
+async function abrirImportacaoExcel(){
+
+  const input = document.getElementById('arquivoExcel');
+
+  if (!input) {
+    alert('Campo de importação não encontrado.');
+    return;
+  }
+
+  input.click();
+}
+
+async function importarExcel(input){
+
+  const arquivo = input.files && input.files[0];
+
+  if (!arquivo) {
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+
+  if (!token) {
+    alert('Sua sessão expirou. Faça login novamente.');
+    return;
+  }
+
+  const botao = document.querySelector('.update-excel-btn');
+
+  if (botao) {
+    botao.disabled = true;
+    botao.innerHTML = '<span>⏳</span> Atualizando...';
+  }
+
+  try {
+
+    const formData = new FormData();
+    formData.append('arquivo', arquivo);
+
+    const resposta = await fetch('/api/vendas/importar', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    const resultado = await resposta.json();
+
+    if (!resposta.ok) {
+      throw new Error(resultado.erro || 'Não foi possível atualizar os dados.');
+    }
+
+    alert(
+      `✅ Dados atualizados com sucesso!\n\n${resultado.registros.toLocaleString('pt-BR')} registros sincronizados.`
+    );
+
+    await carregarFiltros();
+    await carregarDashboard();
+
+  } catch (erro) {
+
+    console.error('Erro ao importar Excel:', erro);
+
+    alert(`❌ Erro ao atualizar os dados:\n\n${erro.message}`);
+
+  } finally {
+
+    input.value = '';
+
+    if (botao) {
+      botao.disabled = false;
+      botao.innerHTML = '<span>↻</span> Atualizar dados';
+    }
+
+  }
+}
 
 function obterQueryFiltros(){
 
