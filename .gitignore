@@ -6,3 +6,8 @@ data/
 .vercel
 
 .env.development.local
+
+# Backups locais do desenvolvimento
+src/backups/
+public/backups/
+src/server-antes-*.js

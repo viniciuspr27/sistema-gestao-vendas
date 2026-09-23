@@ -1,3 +1,365 @@
+
+
+function normalizarNumeroImportacao(valor) {
+
+  if (
+    valor === null ||
+    valor === undefined ||
+    String(valor).trim() === ''
+  ) {
+    return null;
+  }
+
+  if (typeof valor === 'number') {
+    return Number.isFinite(valor)
+      ? valor
+      : null;
+  }
+
+  let texto =
+    String(valor)
+      .trim()
+      .replace(/\s/g, '')
+      .replace(/R\$/gi, '')
+      .replace(/[^\d,.\-]/g, '');
+
+  if (!texto) {
+    return null;
+  }
+
+  const ultimaVirgula =
+    texto.lastIndexOf(',');
+
+  const ultimoPonto =
+    texto.lastIndexOf('.');
+
+  /*
+   * Quando existem vírgula e ponto,
+   * usamos o último separador como decimal.
+   *
+   * 1.250,50  -> 1250.50
+   * 1,250.50  -> 1250.50
+   */
+  if (
+    ultimaVirgula !== -1 &&
+    ultimoPonto !== -1
+  ) {
+
+    if (ultimaVirgula > ultimoPonto) {
+      texto =
+        texto
+          .replace(/\./g, '')
+          .replace(',', '.');
+    } else {
+      texto =
+        texto
+          .replace(/,/g, '');
+    }
+
+  } else if (
+    ultimaVirgula !== -1
+  ) {
+
+    const casasDecimais =
+      texto.length -
+      ultimaVirgula -
+      1;
+
+    if (
+      casasDecimais >= 1 &&
+      casasDecimais <= 2
+    ) {
+      texto =
+        texto.replace(',', '.');
+    } else {
+      texto =
+        texto.replace(/,/g, '');
+    }
+
+  } else if (
+    (texto.match(/\./g) || []).length > 1
+  ) {
+
+    texto =
+      texto.replace(/\./g, '');
+
+  } else if (
+    ultimoPonto !== -1
+  ) {
+
+    const casasDecimais =
+      texto.length -
+      ultimoPonto -
+      1;
+
+    if (
+      casasDecimais > 2
+    ) {
+      texto =
+        texto.replace(/\./g, '');
+    }
+  }
+
+  const numero =
+    Number(texto);
+
+  return Number.isFinite(numero)
+    ? numero
+    : null;
+}
+
+
+function normalizarDataImportacao(valor) {
+
+  if (
+    valor === null ||
+    valor === undefined ||
+    String(valor).trim() === ''
+  ) {
+    return null;
+  }
+
+  /*
+   * Excel pode entregar a data como objeto Date.
+   */
+  if (
+    valor instanceof Date &&
+    !Number.isNaN(valor.getTime())
+  ) {
+    return valor;
+  }
+
+  /*
+   * Datas numéricas do Excel.
+   * O Excel normalmente usa 25569 como referência
+   * para 01/01/1970 no sistema de datas 1900.
+   */
+  if (
+    typeof valor === 'number' &&
+    Number.isFinite(valor)
+  ) {
+
+    if (
+      valor > 20000 &&
+      valor < 100000
+    ) {
+
+      const data =
+        new Date(
+          Date.UTC(
+            1899,
+            11,
+            30
+          ) +
+          valor * 86400000
+        );
+
+      if (
+        !Number.isNaN(
+          data.getTime()
+        )
+      ) {
+        return data;
+      }
+    }
+
+    return null;
+  }
+
+  const texto =
+    String(valor)
+      .trim();
+
+  /*
+   * ISO:
+   * 2026-09-23
+   * 2026-09-23T10:30:00
+   */
+  if (
+    /^\d{4}-\d{2}-\d{2}/.test(texto)
+  ) {
+
+    const data =
+      new Date(texto);
+
+    if (
+      !Number.isNaN(
+        data.getTime()
+      )
+    ) {
+      return data;
+    }
+  }
+
+  /*
+   * Brasil:
+   * 23/09/2026
+   * 23-09-2026
+   * 23.09.2026
+   */
+  const partes =
+    texto.match(
+      /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/
+    );
+
+  if (partes) {
+
+    const dia =
+      Number(partes[1]);
+
+    const mes =
+      Number(partes[2]);
+
+    const ano =
+      Number(partes[3]);
+
+    const data =
+      new Date(
+        ano,
+        mes - 1,
+        dia
+      );
+
+    if (
+      data.getFullYear() === ano &&
+      data.getMonth() === mes - 1 &&
+      data.getDate() === dia
+    ) {
+      return data;
+    }
+  }
+
+  /*
+   * Última tentativa:
+   * datas reconhecidas nativamente pelo JavaScript.
+   */
+  const data =
+    new Date(texto);
+
+  return Number.isNaN(
+    data.getTime()
+  )
+    ? null
+    : data;
+}
+
+
+function prepararLinhaParaImportacao(linha) {
+
+  const novaLinha = {
+    ...linha
+  };
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      novaLinha,
+      'Data'
+    )
+  ) {
+    const data =
+      normalizarDataImportacao(
+        novaLinha.Data
+      );
+
+    if (data) {
+      novaLinha.Data =
+        data;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      novaLinha,
+      'Quantidade'
+    )
+  ) {
+    const quantidade =
+      normalizarNumeroImportacao(
+        novaLinha.Quantidade
+      );
+
+    if (
+      quantidade !== null
+    ) {
+      novaLinha.Quantidade =
+        quantidade;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      novaLinha,
+      'Preço Unitário'
+    )
+  ) {
+    const preco =
+      normalizarNumeroImportacao(
+        novaLinha['Preço Unitário']
+      );
+
+    if (
+      preco !== null
+    ) {
+      novaLinha['Preço Unitário'] =
+        preco;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      novaLinha,
+      'Valor Líquido'
+    )
+  ) {
+    const valor =
+      normalizarNumeroImportacao(
+        novaLinha['Valor Líquido']
+      );
+
+    if (
+      valor !== null
+    ) {
+      novaLinha['Valor Líquido'] =
+        valor;
+    }
+  }
+
+  /*
+   * CAMPOS OPCIONAIS
+   *
+   * Não criamos campos que não existem no Excel.
+   * Assim, a validação consegue diferenciar:
+   * - coluna ausente = campo realmente opcional
+   * - coluna presente e inválida = erro de validação
+   */
+
+  /*
+   * Se a coluna Preço Unitário existir no Excel,
+   * normalizamos seu valor. Se não existir,
+   * ela permanece ausente.
+   */
+  if (
+    Object.prototype.hasOwnProperty.call(
+      novaLinha,
+      'Preço Unitário'
+    )
+  ) {
+    const precoExistente =
+      normalizarNumeroImportacao(
+        novaLinha['Preço Unitário']
+      );
+
+    if (
+      precoExistente !== null
+    ) {
+      novaLinha['Preço Unitário'] =
+        precoExistente;
+    }
+  }
+
+  return novaLinha;
+}
+
 const path = require('path');
 
 const dotenv = require('dotenv');
@@ -11,6 +373,10 @@ dotenv.config({
 });
 
 const express = require('express');
+
+
+
+
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -647,6 +1013,657 @@ function formatarDataExcel(valorData) {
   ).padStart(2, '0')}`;
 }
 
+
+/*
+ * =========================================================
+ * PRÉ-VISUALIZAÇÃO DO IMPORTADOR UNIVERSAL
+ * =========================================================
+ *
+ * Analisa a planilha sem gravar nada no banco.
+ */
+
+app.post(
+  '/api/vendas/preview-importacao',
+  authRequired,
+  roleRequired('admin'),
+  upload.single('arquivo'),
+  async (req, res) => {
+
+    try {
+
+      if (!req.file) {
+        return res.status(400).json({
+          erro: 'Nenhum arquivo Excel foi enviado.'
+        });
+      }
+
+      const extensao =
+        path
+          .extname(req.file.originalname)
+          .toLowerCase();
+
+      if (!['.xlsx', '.xls'].includes(extensao)) {
+        return res.status(400).json({
+          erro:
+            'Formato inválido. Envie um arquivo Excel (.xlsx ou .xls).'
+        });
+      }
+
+      const workbook =
+        XLSX.read(
+          req.file.buffer,
+          {
+            type: 'buffer',
+            cellDates: true
+          }
+        );
+
+      let nomeAbaSelecionada = 'Vendas';
+
+      let sheet =
+        workbook.Sheets[nomeAbaSelecionada];
+
+      if (!sheet) {
+
+        const abasComDados =
+          workbook.SheetNames.filter(nome => {
+
+            const aba =
+              workbook.Sheets[nome];
+
+            if (!aba) return false;
+
+            const range =
+              XLSX.utils.decode_range(
+                aba['!ref'] || 'A1'
+              );
+
+            return (
+              range.e.r > range.s.r ||
+              range.e.c > range.s.c
+            );
+
+          });
+
+        if (!abasComDados.length) {
+
+          return res.status(400).json({
+            erro:
+              'O arquivo Excel não possui nenhuma aba com dados.'
+          });
+
+        }
+
+        nomeAbaSelecionada =
+          abasComDados[0];
+
+        sheet =
+          workbook.Sheets[nomeAbaSelecionada];
+
+      }
+
+      const dados =
+        XLSX.utils.sheet_to_json(
+          sheet,
+          {
+            defval: null,
+            raw: true
+          }
+        );
+
+      if (!dados.length) {
+
+        return res.status(400).json({
+          erro:
+            'O arquivo não possui registros.'
+        });
+
+      }
+
+      
+
+
+
+
+
+
+
+
+const normalizarColuna = valor =>
+        String(valor ?? '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '');
+
+      const aliasesColunas = {
+
+        'ID Venda': [
+          'id venda',
+          'idvenda',
+          'id',
+          'codigo venda',
+          'codigo da venda',
+          'cod venda',
+          'numero venda',
+          'numero da venda',
+          'pedido',
+          'numero pedido'
+        ],
+
+        'Data': [
+          'data',
+          'data venda',
+          'data da venda',
+          'dt venda',
+          'dt da venda',
+          'dtvenda',
+          'data pedido',
+          'data da compra',
+          'data compra'
+        ],
+
+        'Cliente': [
+          'cliente',
+          'nome cliente',
+          'nome do cliente',
+          'cliente nome',
+          'razao social',
+          'razao social cliente',
+          'comprador',
+          'nome comprador'
+        ],
+
+        'Vendedor': [
+          'vendedor',
+          'nome vendedor',
+          'nome do vendedor',
+          'consultor',
+          'consultora',
+          'representante',
+          'representante comercial',
+          'responsavel',
+          'responsavel venda',
+          'atendente'
+        ],
+
+        'Produto': [
+          'produto',
+          'nome produto',
+          'nome do produto',
+          'produto vendido',
+          'item',
+          'descricao produto',
+          'descricao do produto',
+          'mercadoria'
+        ],
+
+        'Categoria': [
+          'categoria',
+          'categoria produto',
+          'grupo',
+          'departamento',
+          'linha',
+          'segmento',
+          'tipo produto'
+        ],
+
+        'Quantidade': [
+          'quantidade',
+          'qtd',
+          'qtde',
+          'qde',
+          'quant',
+          'volume',
+          'unidades',
+          'qtd vendida',
+          'quantidade vendida'
+        ],
+
+        'Preço Unitário': [
+          'preco unitario',
+          'preco',
+          'valor unitario',
+          'valor por unidade',
+          'preco por unidade',
+          'preco venda',
+          'preco de venda',
+          'valor unidade'
+        ],
+
+        'Forma de Pagamento': [
+          'forma de pagamento',
+          'forma pagamento',
+          'pagamento',
+          'meio de pagamento',
+          'meio pagamento',
+          'metodo pagamento',
+          'metodo de pagamento',
+          'condicao pagamento',
+          'condicao de pagamento'
+        ],
+
+        'Status': [
+          'status',
+          'situacao',
+          'situacao venda',
+          'estado',
+          'status pedido',
+          'situacao pedido'
+        ],
+
+        'Valor Líquido': [
+          'valor liquido',
+          'valor',
+          'valor total',
+          'valor venda',
+          'valor da venda',
+          'total',
+          'faturamento',
+          'faturamento liquido',
+          'receita',
+          'receita liquida',
+          'total venda',
+          'total da venda'
+        ]
+
+      };
+
+      const colunasEncontradas =
+        Object.keys(dados[0]);
+
+      const mapaColunas = {};
+
+      for (
+        const colunaPadrao
+        of Object.keys(aliasesColunas)
+      ) {
+
+        const candidatos = [
+          colunaPadrao,
+          ...aliasesColunas[colunaPadrao]
+        ];
+
+        const encontrada =
+          colunasEncontradas.find(
+            colunaExcel => {
+
+              const normalizadaExcel =
+                normalizarColuna(
+                  colunaExcel
+                );
+
+              return candidatos.some(
+                candidato =>
+                  normalizarColuna(
+                    candidato
+                  ) === normalizadaExcel
+              );
+
+            }
+          );
+
+        if (encontrada) {
+
+          mapaColunas[colunaPadrao] =
+            encontrada;
+
+        }
+
+      }
+
+      const colunasObrigatorias = [
+        'ID Venda',
+        'Data',
+        'Cliente',
+        'Vendedor',
+        'Produto',
+        'Quantidade',
+        'Valor Líquido'
+      ];
+
+      const colunasOpcionais = [
+        'Categoria',
+        'Preço Unitário',
+        'Forma de Pagamento',
+        'Status'
+      ];
+
+      const colunasAusentes =
+        colunasObrigatorias.filter(
+          coluna =>
+            !mapaColunas[coluna]
+        );
+
+      const mapeamento =
+        colunasObrigatorias.map(
+          coluna => ({
+            campo: coluna,
+            colunaExcel:
+              mapaColunas[coluna] || null,
+            encontrada:
+              Boolean(mapaColunas[coluna])
+          })
+        );
+
+      return res.json({
+
+        sucesso: true,
+
+        arquivo:
+          req.file.originalname,
+
+        aba:
+          nomeAbaSelecionada,
+
+        registros:
+          dados.length,
+
+        colunasEncontradas,
+
+        mapeamento,
+
+        colunasAusentes,
+
+        prontoParaImportar:
+          colunasAusentes.length === 0,
+
+        /*
+         * PRÉVIA DOS PRIMEIROS REGISTROS
+         *
+         * Envia somente uma pequena amostra para o frontend.
+         * Isso permite conferir a planilha antes da importação
+         * sem carregar todos os registros no modal.
+         */
+        previaLinhas:
+          dados
+            .slice(0, 5)
+            .map(linha => {
+
+              const linhaPrevia = {};
+
+              for (
+                const coluna of colunasEncontradas
+              ) {
+
+                linhaPrevia[coluna] =
+                  linha[coluna];
+
+              }
+
+              return linhaPrevia;
+
+            }),
+
+        /*
+         * QUALIDADE DOS DADOS
+         *
+         * Analisa os campos obrigatórios antes
+         * da importação definitiva.
+         */
+        duplicidades:
+          (() => {
+
+            const mapaIds =
+              new Map();
+
+            for (
+              const linha of dados
+            ) {
+
+              const colunaId =
+                mapaColunas['ID Venda'];
+
+              const valorId =
+                colunaId
+                  ? linha[colunaId]
+                  : null;
+
+              if(
+                valorId === null ||
+                valorId === undefined ||
+                String(valorId).trim() === ''
+              ){
+                continue;
+              }
+
+              const id =
+                String(valorId)
+                  .trim();
+
+              mapaIds.set(
+                id,
+                (mapaIds.get(id) || 0) + 1
+              );
+
+            }
+
+            const idsDuplicados =
+              Array.from(
+                mapaIds.entries()
+              )
+              .filter(
+                ([id, quantidade]) =>
+                  quantidade > 1
+              )
+              .map(
+                ([id, quantidade]) => ({
+                  id,
+                  quantidade
+                })
+              );
+
+            const registrosDuplicados =
+              idsDuplicados.reduce(
+                (
+                  total,
+                  item
+                ) =>
+                  total +
+                  item.quantidade,
+                0
+              );
+
+            return {
+
+              possuiDuplicidades:
+                idsDuplicados.length > 0,
+
+              idsDuplicados:
+                idsDuplicados.length,
+
+              registrosDuplicados,
+
+              detalhes:
+                idsDuplicados
+                  .slice(0, 20)
+
+            };
+
+          })(),
+
+        qualidadeDados:
+          (() => {
+
+            let camposVazios = 0;
+            let registrosComProblema = 0;
+            let valoresInvalidos = 0;
+
+            const camposAnalisados =
+              colunasObrigatorias.length;
+
+            for (
+              const linhaOriginal of dados
+            ) {
+
+              const linha = {};
+
+              for (
+                const campo of colunasObrigatorias
+              ) {
+
+                const colunaExcel =
+                  mapaColunas[campo];
+
+                linha[campo] =
+                  colunaExcel
+                    ? linhaOriginal[colunaExcel]
+                    : null;
+
+              }
+
+              let problemaNaLinha =
+                false;
+
+              for (
+                const campo of colunasObrigatorias
+              ) {
+
+                const valor =
+                  linha[campo];
+
+                if(
+                  valor === null ||
+                  valor === undefined ||
+                  String(valor).trim() === ''
+                ){
+
+                  camposVazios++;
+                  problemaNaLinha = true;
+
+                }
+
+              }
+
+              /*
+               * Validação básica de quantidade,
+               * preço e valor líquido.
+               */
+              const numeros = [
+                'Quantidade',
+                'Preço Unitário',
+                'Valor Líquido'
+              ];
+
+              for(
+                const campo of numeros
+              ){
+
+                const valor =
+                  linha[campo];
+
+                if(
+                  valor !== null &&
+                  valor !== undefined &&
+                  String(valor).trim() !== ''
+                ){
+
+                  const numero =
+                    Number(
+                      String(valor)
+                        .replace('R$', '')
+                        .replace(/\s/g, '')
+                        .replace(/\./g, '')
+                        .replace(',', '.')
+                    );
+
+                  if(
+                    !Number.isFinite(numero)
+                  ){
+
+                    valoresInvalidos++;
+                    problemaNaLinha = true;
+
+                  }
+
+                }
+
+              }
+
+              if(
+                problemaNaLinha
+              ){
+
+                registrosComProblema++;
+
+              }
+
+            }
+
+            const totalPossiveis =
+              dados.length *
+              camposAnalisados;
+
+            const totalProblemas =
+              camposVazios +
+              valoresInvalidos;
+
+            const percentual =
+              totalPossiveis > 0
+                ? Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      Math.round(
+                        (
+                          1 -
+                          (
+                            totalProblemas /
+                            totalPossiveis
+                          )
+                        ) *
+                        100
+                      )
+                    )
+                  )
+                : 0;
+
+            return {
+
+              percentual,
+
+              totalRegistros:
+                dados.length,
+
+              registrosComProblema,
+
+              registrosValidos:
+                Math.max(
+                  0,
+                  dados.length -
+                  registrosComProblema
+                ),
+
+              camposVazios,
+
+              valoresInvalidos
+
+            };
+
+          })()
+
+      });
+
+    } catch (erro) {
+
+      console.error(
+        'Erro no preview da importação:',
+        erro
+      );
+
+      return res.status(500).json({
+        erro:
+          'Não foi possível analisar o arquivo Excel.',
+        detalhe:
+          erro.message
+      });
+
+    }
+
+  }
+);
+
+
 app.post(
   '/api/vendas/importar',
   authRequired,
@@ -688,14 +1705,54 @@ app.post(
           }
         );
 
-      const sheet =
-        workbook.Sheets['Vendas'];
+      /*
+       * IMPORTADOR UNIVERSAL
+       *
+       * Prioridade:
+       * 1. Aba "Vendas", quando existir.
+       * 2. Primeira aba que possuir dados.
+       */
+
+      let nomeAbaSelecionada = 'Vendas';
+
+      let sheet =
+        workbook.Sheets[nomeAbaSelecionada];
 
       if (!sheet) {
-        return res.status(400).json({
-          erro:
-            'A aba "Vendas" não foi encontrada no arquivo.'
-        });
+
+        const abasComDados =
+          workbook.SheetNames.filter(nome => {
+
+            const aba =
+              workbook.Sheets[nome];
+
+            if (!aba) {
+              return false;
+            }
+
+            const range =
+              XLSX.utils.decode_range(
+                aba['!ref'] || 'A1'
+              );
+
+            return (
+              range.e.r > range.s.r ||
+              range.e.c > range.s.c
+            );
+          });
+
+        if (!abasComDados.length) {
+          return res.status(400).json({
+            erro:
+              'O arquivo Excel não possui nenhuma aba com dados.'
+          });
+        }
+
+        nomeAbaSelecionada =
+          abasComDados[0];
+
+        sheet =
+          workbook.Sheets[nomeAbaSelecionada];
       }
 
       const dados =
@@ -714,40 +1771,397 @@ app.post(
         });
       }
 
+      /*
+       * MAPEAMENTO UNIVERSAL DE COLUNAS
+       *
+       * O sistema aceita diferentes nomes para a
+       * mesma informação.
+       */
+
+      const normalizarColuna = valor =>
+        String(valor ?? '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '');
+
+      const aliasesColunas = {
+
+        'ID Venda': [
+          'id venda',
+          'idvenda',
+          'id',
+          'codigo venda',
+          'codigo da venda',
+          'cod venda',
+          'numero venda',
+          'numero da venda',
+          'pedido',
+          'numero pedido'
+        ],
+
+        'Data': [
+          'data',
+          'data venda',
+          'data da venda',
+          'dt venda',
+          'dt da venda',
+          'dtvenda',
+          'data pedido',
+          'data da compra',
+          'data compra'
+        ],
+
+        'Cliente': [
+          'cliente',
+          'nome cliente',
+          'nome do cliente',
+          'cliente nome',
+          'razao social',
+          'razao social cliente',
+          'comprador',
+          'nome comprador'
+        ],
+
+        'Vendedor': [
+          'vendedor',
+          'nome vendedor',
+          'nome do vendedor',
+          'consultor',
+          'consultora',
+          'representante',
+          'representante comercial',
+          'responsavel',
+          'responsavel venda',
+          'atendente'
+        ],
+
+        'Produto': [
+          'produto',
+          'nome produto',
+          'nome do produto',
+          'produto vendido',
+          'item',
+          'descricao produto',
+          'descricao do produto',
+          'mercadoria'
+        ],
+
+        'Categoria': [
+          'categoria',
+          'categoria produto',
+          'grupo',
+          'departamento',
+          'linha',
+          'segmento',
+          'tipo produto'
+        ],
+
+        'Quantidade': [
+          'quantidade',
+          'qtd',
+          'qtde',
+          'qde',
+          'quant',
+          'volume',
+          'unidades',
+          'qtd vendida',
+          'quantidade vendida'
+        ],
+
+        'Preço Unitário': [
+          'preco unitario',
+          'preco',
+          'valor unitario',
+          'valor por unidade',
+          'preco por unidade',
+          'preco venda',
+          'preco de venda',
+          'valor unidade'
+        ],
+
+        'Forma de Pagamento': [
+          'forma de pagamento',
+          'forma pagamento',
+          'pagamento',
+          'meio de pagamento',
+          'meio pagamento',
+          'metodo pagamento',
+          'metodo de pagamento',
+          'condicao pagamento',
+          'condicao de pagamento'
+        ],
+
+        'Status': [
+          'status',
+          'situacao',
+          'situacao venda',
+          'estado',
+          'status pedido',
+          'situacao pedido'
+        ],
+
+        'Valor Líquido': [
+          'valor liquido',
+          'valor',
+          'valor total',
+          'valor venda',
+          'valor da venda',
+          'total',
+          'faturamento',
+          'faturamento liquido',
+          'receita',
+          'receita liquida',
+          'total venda',
+          'total da venda'
+        ]
+
+      };
+
+      const colunasEncontradas =
+        Object.keys(dados[0]);
+
+      const mapaColunas = {};
+
+      for (
+        const colunaPadrao
+        of Object.keys(aliasesColunas)
+      ) {
+
+        const candidatos = [
+          colunaPadrao,
+          ...aliasesColunas[colunaPadrao]
+        ];
+
+        const encontrada =
+          colunasEncontradas.find(
+            colunaExcel => {
+
+              const normalizadaExcel =
+                normalizarColuna(
+                  colunaExcel
+                );
+
+              return candidatos.some(
+                candidato =>
+                  normalizarColuna(
+                    candidato
+                  ) === normalizadaExcel
+              );
+
+            }
+          );
+
+        if (encontrada) {
+
+          mapaColunas[colunaPadrao] =
+            encontrada;
+
+        }
+
+      }
+
+      /*
+       * Cria uma versão padronizada dos dados.
+       * O restante do sistema continua trabalhando
+       * com os nomes originais do Dashboard.
+       */
+
+      const dadosNormalizados =
+        dados.map(linha => {
+
+          const novaLinha = {
+            ...linha
+          };
+
+          for (
+            const colunaPadrao
+            of Object.keys(mapaColunas)
+          ) {
+
+            const colunaOriginal =
+              mapaColunas[colunaPadrao];
+
+            novaLinha[colunaPadrao] =
+              linha[colunaOriginal];
+
+          }
+
+          return prepararLinhaParaImportacao(
+            novaLinha
+          );
+
+        });
+
+      /*
+       * Por enquanto mantemos os campos essenciais
+       * exigidos pelo banco.
+       */
+
       const colunasObrigatorias = [
         'ID Venda',
         'Data',
         'Cliente',
         'Vendedor',
         'Produto',
-        'Categoria',
         'Quantidade',
-        'Preço Unitário',
-        'Forma de Pagamento',
-        'Status',
         'Valor Líquido'
       ];
 
-      const colunasEncontradas =
-        Object.keys(dados[0]);
+      /*
+       * MAPEAMENTO MANUAL
+       *
+       * O sistema primeiro tenta identificar
+       * automaticamente. Caso o frontend envie
+       * escolhas manuais, elas sobrescrevem
+       * somente os campos selecionados.
+       */
+      let mapeamentoManual = {};
 
+      try {
+
+        if (
+          req.body &&
+          req.body.mapeamentoManual
+        ) {
+
+          const recebido =
+            JSON.parse(
+              req.body.mapeamentoManual
+            );
+
+          if (
+            recebido &&
+            typeof recebido === 'object' &&
+            !Array.isArray(recebido)
+          ) {
+            mapeamentoManual =
+              recebido;
+          }
+
+        }
+
+      } catch (erroMapeamento) {
+
+        return res.status(400).json({
+          erro:
+            'O mapeamento manual enviado não é válido.'
+        });
+
+      }
+
+      for (
+        const campo of colunasObrigatorias
+      ) {
+
+        const colunaManual =
+          mapeamentoManual[campo];
+
+        if (
+          typeof colunaManual === 'string' &&
+          colunaManual.trim() &&
+          colunasEncontradas.includes(
+            colunaManual
+          )
+        ) {
+
+          mapaColunas[campo] =
+            colunaManual;
+
+        }
+
+      }
+
+      /*
+       * Impede que a mesma coluna do Excel
+       * seja usada para dois campos diferentes.
+       */
+      const colunasUsadas =
+        new Map();
+
+      const conflitos = [];
+
+      for (
+        const campo of colunasObrigatorias
+      ) {
+
+        const coluna =
+          mapaColunas[campo];
+
+        if (!coluna) {
+          continue;
+        }
+
+        if (
+          colunasUsadas.has(coluna)
+        ) {
+
+          conflitos.push({
+            colunaExcel: coluna,
+            campos: [
+              colunasUsadas.get(coluna),
+              campo
+            ]
+          });
+
+        } else {
+
+          colunasUsadas.set(
+            coluna,
+            campo
+          );
+
+        }
+
+      }
+
+      if (conflitos.length) {
+
+        return res.status(400).json({
+          erro:
+            'Uma mesma coluna do Excel foi vinculada a mais de um campo.',
+          conflitos,
+          sugestao:
+            'Escolha uma coluna diferente para cada campo obrigatório.'
+        });
+
+      }
+
+      /*
+       * O mapeamento manual é aplicado antes
+       * da validação definitiva dos registros.
+       */
       const colunasAusentes =
         colunasObrigatorias.filter(
           coluna =>
-            !colunasEncontradas.includes(
-              coluna
-            )
+            !mapaColunas[coluna]
         );
 
       if (
         colunasAusentes.length
       ) {
+
         return res.status(400).json({
           erro:
-            'O arquivo não possui todas as colunas obrigatórias.',
-          colunasAusentes
+            'Não foi possível identificar todas as informações necessárias na planilha.',
+          colunasAusentes,
+          colunasEncontradas,
+          sugestao:
+            'Verifique os nomes das colunas ou utilize o mapeamento manual.'
         });
+
       }
+
+      /*
+       * A partir daqui usamos os dados
+       * normalizados.
+       */
+
+      dados.splice(
+        0,
+        dados.length,
+        ...dadosNormalizados
+      );
 
       const vendas = [];
       const ids = new Set();
@@ -796,10 +2210,25 @@ app.post(
               venda['Produto'] ?? ''
             ).trim();
 
-          const categoria =
-            String(
-              venda['Categoria'] ?? ''
-            ).trim();
+          let categoria = null;
+
+          if (
+            Object.prototype.hasOwnProperty.call(
+              venda,
+              'Categoria'
+            )
+          ) {
+            categoria =
+              String(
+                venda['Categoria'] ?? ''
+              ).trim();
+
+            if (!categoria) {
+              throw new Error(
+                'Categoria não informada.'
+              );
+            }
+          }
 
           const cliente =
             String(
@@ -814,12 +2243,6 @@ app.post(
           if (!produto) {
             throw new Error(
               'Produto não informado.'
-            );
-          }
-
-          if (!categoria) {
-            throw new Error(
-              'Categoria não informada.'
             );
           }
 
@@ -854,20 +2277,29 @@ app.post(
             );
           }
 
-          const precoUnitario =
-            Number(
-              venda['Preço Unitário']
-            );
+          let precoUnitario = null;
 
           if (
-            !Number.isFinite(
-              precoUnitario
-            ) ||
-            precoUnitario < 0
+            Object.prototype.hasOwnProperty.call(
+              venda,
+              'Preço Unitário'
+            )
           ) {
-            throw new Error(
-              'Preço unitário inválido.'
-            );
+            precoUnitario =
+              Number(
+                venda['Preço Unitário']
+              );
+
+            if (
+              !Number.isFinite(
+                precoUnitario
+              ) ||
+              precoUnitario < 0
+            ) {
+              throw new Error(
+                'Preço unitário inválido.'
+              );
+            }
           }
 
           const faturamento =
@@ -886,80 +2318,98 @@ app.post(
             );
           }
 
-          let pagamento =
-            String(
-              venda[
-                'Forma de Pagamento'
-              ] ?? ''
-            ).trim();
+          let pagamento = null;
 
           if (
-            pagamento ===
-            'Cartão de Crédito'
+            Object.prototype.hasOwnProperty.call(
+              venda,
+              'Forma de Pagamento'
+            )
           ) {
             pagamento =
-              'Cartão';
-          } else if (
-            pagamento ===
-              'Transferência' ||
-            pagamento ===
-              'Pix'
-          ) {
-            pagamento =
-              'Pix';
-          } else if (
-            pagamento ===
-            'Boleto'
-          ) {
-            pagamento =
-              'Boleto';
-          }
+              String(
+                venda[
+                  'Forma de Pagamento'
+                ] ?? ''
+              ).trim();
 
-          if (
-            ![
-              'Pix',
-              'Cartão',
+            if (
+              pagamento ===
+              'Cartão de Crédito'
+            ) {
+              pagamento =
+                'Cartão';
+            } else if (
+              pagamento ===
+                'Transferência' ||
+              pagamento ===
+                'Pix'
+            ) {
+              pagamento =
+                'Pix';
+            } else if (
+              pagamento ===
               'Boleto'
-            ].includes(
-              pagamento
-            )
-          ) {
-            throw new Error(
-              'Forma de pagamento inválida.'
-            );
+            ) {
+              pagamento =
+                'Boleto';
+            }
+
+            if (
+              ![
+                'Pix',
+                'Cartão',
+                'Boleto'
+              ].includes(
+                pagamento
+              )
+            ) {
+              throw new Error(
+                'Forma de pagamento inválida.'
+              );
+            }
           }
 
-          let status =
-            String(
-              venda['Status'] ?? ''
-            ).trim();
+          let status = null;
 
           if (
-            status ===
-            'Concluída'
-          ) {
-            status =
-              'Pago';
-          } else if (
-            status ===
-            'Cancelada'
-          ) {
-            status =
-              'Cancelado';
-          }
-
-          if (
-            ![
-              'Pago',
-              'Pendente',
-              'Cancelado'
-            ].includes(
-              status
+            Object.prototype.hasOwnProperty.call(
+              venda,
+              'Status'
             )
           ) {
-            throw new Error(
-              'Status inválido.'
-            );
+            status =
+              String(
+                venda['Status'] ?? ''
+              ).trim();
+
+            if (
+              status ===
+              'Concluída'
+            ) {
+              status =
+                'Pago';
+            } else if (
+              status ===
+              'Cancelada'
+            ) {
+              status =
+                'Cancelado';
+            }
+
+            if (
+              ![
+                'Pago',
+                'Pendente',
+                'Cancelado'
+              ].includes(
+                status
+              )
+            ) {
+              throw new Error(
+                'Status inválido.'
+              );
+            }
           }
 
           vendas.push({
@@ -1035,13 +2485,13 @@ app.post(
             x.id,
             x.data::date,
             x.produto,
-            x.categoria,
+            COALESCE(NULLIF(TRIM(x.categoria), ''), 'Não informado'),
             x.cliente,
             x.vendedor,
             x.quantidade,
-            x.preco_unitario,
-            x.pagamento,
-            x.status,
+            COALESCE(x.preco_unitario, 0),
+            COALESCE(NULLIF(TRIM(x.pagamento), ''), 'Pix'),
+            COALESCE(NULLIF(TRIM(x.status), ''), 'Pago'),
             x.faturamento
           FROM json_to_recordset(
             ${JSON.stringify(vendas)}
