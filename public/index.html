@@ -1792,7 +1792,43 @@ async function importarExcel(input){
     const resultado = await resposta.json();
 
     if (!resposta.ok) {
-      throw new Error(resultado.erro || 'Não foi possível atualizar os dados.');
+      const detalhesErros = Array.isArray(resultado.detalhes)
+        ? resultado.detalhes
+        : [];
+
+      if (detalhesErros.length) {
+        const detalhes = detalhesErros
+          .slice(0, 10)
+          .map(item => {
+            const linha = item.linha
+              ? `Linha ${item.linha}`
+              : 'Linha não identificada';
+            const id = item.id
+              ? ` | ID: ${item.id}`
+              : '';
+            return `• ${linha}${id} — ${item.erro || 'Erro não identificado.'}`;
+          })
+          .join('\n');
+
+        const totalErros = Number(resultado.registrosComErro) || detalhesErros.length;
+        const aviso = totalErros > 10
+          ? `\n\n... e mais ${totalErros - 10} erro(s).`
+          : '';
+
+        throw new Error(
+          `O arquivo possui registros inválidos e não foi importado.\n\n${detalhes}${aviso}`
+        );
+      }
+
+      if (Array.isArray(resultado.colunasAusentes) && resultado.colunasAusentes.length) {
+        throw new Error(
+          `${resultado.erro || 'O arquivo não possui todas as colunas obrigatórias.'}\n\nColunas ausentes:\n• ${resultado.colunasAusentes.join('\n• ')}`
+        );
+      }
+
+      throw new Error(
+        resultado.erro || 'Não foi possível atualizar os dados.'
+      );
     }
 
     alert(

@@ -1,4 +1,5 @@
 const path = require('path');
+
 const dotenv = require('dotenv');
 
 dotenv.config({
@@ -18,7 +19,13 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const XLSX = require('xlsx');
 const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  }
+});
 
 const sql = require('./db');
 const { authRequired, roleRequired } = require('./auth');
@@ -270,7 +277,6 @@ app.get('/api/kpis', authRequired, async (req, res) => {
 
     const query = `
       SELECT
-
         COALESCE(
           SUM(
             CASE
@@ -281,7 +287,6 @@ app.get('/api/kpis', authRequired, async (req, res) => {
           ),
           0
         ) AS faturamento_pago,
-
         COALESCE(
           SUM(
             CASE
@@ -292,7 +297,6 @@ app.get('/api/kpis', authRequired, async (req, res) => {
           ),
           0
         ) AS vendas_pagas,
-
         COALESCE(
           AVG(
             CASE
@@ -302,7 +306,6 @@ app.get('/api/kpis', authRequired, async (req, res) => {
           ),
           0
         ) AS ticket_medio,
-
         COALESCE(
           SUM(
             CASE
@@ -313,7 +316,6 @@ app.get('/api/kpis', authRequired, async (req, res) => {
           ),
           0
         ) AS itens_vendidos
-
       FROM vendas
       ${where}
     `;
@@ -347,12 +349,10 @@ app.get(
 
       const query = `
         SELECT
-
           TO_CHAR(
             data::date,
             'YYYY-MM'
           ) AS mes,
-
           ROUND(
             SUM(
               CASE
@@ -363,14 +363,10 @@ app.get(
             )::numeric,
             2
           ) AS faturamento
-
         FROM vendas
-
         ${where}
-
         GROUP BY
           TO_CHAR(data::date, 'YYYY-MM')
-
         ORDER BY mes
       `;
 
@@ -404,9 +400,7 @@ app.get(
 
       const query = `
         SELECT
-
           vendedor,
-
           ROUND(
             SUM(
               CASE
@@ -417,13 +411,9 @@ app.get(
             )::numeric,
             2
           ) AS faturamento
-
         FROM vendas
-
         ${where}
-
         GROUP BY vendedor
-
         ORDER BY faturamento DESC
       `;
 
@@ -457,9 +447,7 @@ app.get(
 
       const query = `
         SELECT
-
           produto,
-
           SUM(
             CASE
               WHEN status = 'Pago'
@@ -467,7 +455,6 @@ app.get(
               ELSE 0
             END
           ) AS itens,
-
           ROUND(
             SUM(
               CASE
@@ -478,13 +465,9 @@ app.get(
             )::numeric,
             2
           ) AS faturamento
-
         FROM vendas
-
         ${where}
-
         GROUP BY produto
-
         ORDER BY faturamento DESC
       `;
 
@@ -550,6 +533,120 @@ app.get(
    IMPORTAÇÃO DE EXCEL
 ================================ */
 
+function formatarDataExcel(valorData) {
+  if (
+    valorData instanceof Date &&
+    !Number.isNaN(valorData.getTime())
+  ) {
+    return `${valorData.getFullYear()}-${String(
+      valorData.getMonth() + 1
+    ).padStart(2, '0')}-${String(
+      valorData.getDate()
+    ).padStart(2, '0')}`;
+  }
+
+  if (typeof valorData === 'number') {
+    const dataExcel =
+      XLSX.SSF.parse_date_code(valorData);
+
+    if (!dataExcel) {
+      throw new Error('Data inválida.');
+    }
+
+    return `${dataExcel.y}-${String(
+      dataExcel.m
+    ).padStart(2, '0')}-${String(
+      dataExcel.d
+    ).padStart(2, '0')}`;
+  }
+
+  const textoData =
+    String(valorData ?? '').trim();
+
+  if (!textoData) {
+    throw new Error('Data não informada.');
+  }
+
+  if (
+    /^\d{2}\/\d{2}\/\d{4}$/.test(
+      textoData
+    )
+  ) {
+    const [
+      dia,
+      mes,
+      ano
+    ] = textoData.split('/').map(Number);
+
+    const data =
+      new Date(
+        ano,
+        mes - 1,
+        dia
+      );
+
+    if (
+      data.getFullYear() !== ano ||
+      data.getMonth() !== mes - 1 ||
+      data.getDate() !== dia
+    ) {
+      throw new Error('Data inválida.');
+    }
+
+    return `${ano}-${String(
+      mes
+    ).padStart(2, '0')}-${String(
+      dia
+    ).padStart(2, '0')}`;
+  }
+
+  if (
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      textoData
+    )
+  ) {
+    const [
+      ano,
+      mes,
+      dia
+    ] = textoData.split('-').map(Number);
+
+    const data =
+      new Date(
+        ano,
+        mes - 1,
+        dia
+      );
+
+    if (
+      data.getFullYear() !== ano ||
+      data.getMonth() !== mes - 1 ||
+      data.getDate() !== dia
+    ) {
+      throw new Error('Data inválida.');
+    }
+
+    return textoData;
+  }
+
+  const data =
+    new Date(textoData);
+
+  if (
+    Number.isNaN(
+      data.getTime()
+    )
+  ) {
+    throw new Error('Data inválida.');
+  }
+
+  return `${data.getFullYear()}-${String(
+    data.getMonth() + 1
+  ).padStart(2, '0')}-${String(
+    data.getDate()
+  ).padStart(2, '0')}`;
+}
+
 app.post(
   '/api/vendas/importar',
   authRequired,
@@ -559,114 +656,367 @@ app.post(
     try {
       if (!req.file) {
         return res.status(400).json({
-          erro: 'Nenhum arquivo Excel foi enviado.'
+          erro:
+            'Nenhum arquivo Excel foi enviado.'
         });
       }
 
-      const workbook = XLSX.read(req.file.buffer, {
-        type: 'buffer'
-      });
+      const extensao =
+        path
+          .extname(
+            req.file.originalname
+          )
+          .toLowerCase();
 
-      const sheet = workbook.Sheets['Vendas'];
+      if (
+        !['.xlsx', '.xls'].includes(
+          extensao
+        )
+      ) {
+        return res.status(400).json({
+          erro:
+            'Formato inválido. Envie um arquivo Excel (.xlsx ou .xls).'
+        });
+      }
+
+      const workbook =
+        XLSX.read(
+          req.file.buffer,
+          {
+            type: 'buffer',
+            cellDates: true
+          }
+        );
+
+      const sheet =
+        workbook.Sheets['Vendas'];
 
       if (!sheet) {
         return res.status(400).json({
-          erro: 'A aba "Vendas" não foi encontrada no arquivo.'
+          erro:
+            'A aba "Vendas" não foi encontrada no arquivo.'
         });
       }
 
-      const dados = XLSX.utils.sheet_to_json(sheet);
+      const dados =
+        XLSX.utils.sheet_to_json(
+          sheet,
+          {
+            defval: null,
+            raw: true
+          }
+        );
 
       if (!dados.length) {
         return res.status(400).json({
-          erro: 'O arquivo não possui registros.'
+          erro:
+            'O arquivo não possui registros.'
+        });
+      }
+
+      const colunasObrigatorias = [
+        'ID Venda',
+        'Data',
+        'Cliente',
+        'Vendedor',
+        'Produto',
+        'Categoria',
+        'Quantidade',
+        'Preço Unitário',
+        'Forma de Pagamento',
+        'Status',
+        'Valor Líquido'
+      ];
+
+      const colunasEncontradas =
+        Object.keys(dados[0]);
+
+      const colunasAusentes =
+        colunasObrigatorias.filter(
+          coluna =>
+            !colunasEncontradas.includes(
+              coluna
+            )
+        );
+
+      if (
+        colunasAusentes.length
+      ) {
+        return res.status(400).json({
+          erro:
+            'O arquivo não possui todas as colunas obrigatórias.',
+          colunasAusentes
         });
       }
 
       const vendas = [];
       const ids = new Set();
+      const erros = [];
 
-      for (let i = 0; i < dados.length; i++) {
-        const venda = dados[i];
-        const linha = i + 2;
+      for (
+        let i = 0;
+        i < dados.length;
+        i++
+      ) {
+        const venda =
+          dados[i];
 
-        const id = i + 1;
+        const linha =
+          i + 2;
 
-        const valorData = venda['Data'];
-        let dataFormatada;
+        try {
+          const idExcel =
+            String(
+              venda['ID Venda'] ?? ''
+            ).trim();
 
-        if (typeof valorData === 'number') {
-          const dataExcel = XLSX.SSF.parse_date_code(valorData);
-
-          if (!dataExcel) {
-            throw new Error(`Data inválida na linha ${linha}.`);
+          if (!idExcel) {
+            throw new Error(
+              'ID da venda não informado.'
+            );
           }
 
-          dataFormatada =
-            `${dataExcel.y}-${String(dataExcel.m).padStart(2, '0')}-${String(dataExcel.d).padStart(2, '0')}`;
-        } else {
-          const data = new Date(valorData);
-
-          if (Number.isNaN(data.getTime())) {
-            throw new Error(`Data inválida na linha ${linha}.`);
+          if (
+            ids.has(idExcel)
+          ) {
+            throw new Error(
+              `ID da venda duplicado: ${idExcel}.`
+            );
           }
 
-          dataFormatada =
-            `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
-        }
+          ids.add(idExcel);
 
-        let pagamento = venda['Forma de Pagamento'];
+          const dataFormatada =
+            formatarDataExcel(
+              venda['Data']
+            );
 
-        if (pagamento === 'Cartão de Crédito') {
-          pagamento = 'Cartão';
-        } else if (
-          pagamento === 'Transferência' ||
-          pagamento === 'Pix'
+          const produto =
+            String(
+              venda['Produto'] ?? ''
+            ).trim();
+
+          const categoria =
+            String(
+              venda['Categoria'] ?? ''
+            ).trim();
+
+          const cliente =
+            String(
+              venda['Cliente'] ?? ''
+            ).trim();
+
+          const vendedor =
+            String(
+              venda['Vendedor'] ?? ''
+            ).trim();
+
+          if (!produto) {
+            throw new Error(
+              'Produto não informado.'
+            );
+          }
+
+          if (!categoria) {
+            throw new Error(
+              'Categoria não informada.'
+            );
+          }
+
+          if (!cliente) {
+            throw new Error(
+              'Cliente não informado.'
+            );
+          }
+
+          if (!vendedor) {
+            throw new Error(
+              'Vendedor não informado.'
+            );
+          }
+
+          const quantidade =
+            Number(
+              venda['Quantidade']
+            );
+
+          if (
+            !Number.isFinite(
+              quantidade
+            ) ||
+            !Number.isInteger(
+              quantidade
+            ) ||
+            quantidade <= 0
+          ) {
+            throw new Error(
+              'Quantidade inválida.'
+            );
+          }
+
+          const precoUnitario =
+            Number(
+              venda['Preço Unitário']
+            );
+
+          if (
+            !Number.isFinite(
+              precoUnitario
+            ) ||
+            precoUnitario < 0
+          ) {
+            throw new Error(
+              'Preço unitário inválido.'
+            );
+          }
+
+          const faturamento =
+            Number(
+              venda['Valor Líquido']
+            );
+
+          if (
+            !Number.isFinite(
+              faturamento
+            ) ||
+            faturamento < 0
+          ) {
+            throw new Error(
+              'Valor líquido inválido.'
+            );
+          }
+
+          let pagamento =
+            String(
+              venda[
+                'Forma de Pagamento'
+              ] ?? ''
+            ).trim();
+
+          if (
+            pagamento ===
+            'Cartão de Crédito'
+          ) {
+            pagamento =
+              'Cartão';
+          } else if (
+            pagamento ===
+              'Transferência' ||
+            pagamento ===
+              'Pix'
+          ) {
+            pagamento =
+              'Pix';
+          } else if (
+            pagamento ===
+            'Boleto'
+          ) {
+            pagamento =
+              'Boleto';
+          }
+
+          if (
+            ![
+              'Pix',
+              'Cartão',
+              'Boleto'
+            ].includes(
+              pagamento
+            )
+          ) {
+            throw new Error(
+              'Forma de pagamento inválida.'
+            );
+          }
+
+          let status =
+            String(
+              venda['Status'] ?? ''
+            ).trim();
+
+          if (
+            status ===
+            'Concluída'
+          ) {
+            status =
+              'Pago';
+          } else if (
+            status ===
+            'Cancelada'
+          ) {
+            status =
+              'Cancelado';
+          }
+
+          if (
+            ![
+              'Pago',
+              'Pendente',
+              'Cancelado'
+            ].includes(
+              status
+            )
+          ) {
+            throw new Error(
+              'Status inválido.'
+            );
+          }
+
+          vendas.push({
+            id:
+              i + 1,
+            data:
+              dataFormatada,
+            produto,
+            categoria,
+            cliente,
+            vendedor,
+            quantidade,
+            preco_unitario:
+              precoUnitario,
+            pagamento,
+            status,
+            faturamento
+          });
+        } catch (
+          erroLinha
         ) {
-          pagamento = 'Pix';
-        } else if (pagamento === 'Boleto') {
-          pagamento = 'Boleto';
+          erros.push({
+            linha,
+            id:
+              venda[
+                'ID Venda'
+              ] || null,
+            erro:
+              erroLinha.message
+          });
         }
+      }
 
-        if (!['Pix', 'Cartão', 'Boleto'].includes(pagamento)) {
-          throw new Error(`Forma de pagamento inválida na linha ${linha}.`);
-        }
-
-        let status = venda['Status'];
-
-        if (status === 'Concluída') {
-          status = 'Pago';
-        } else if (status === 'Cancelada') {
-          status = 'Cancelado';
-        }
-
-        if (!['Pago', 'Pendente', 'Cancelado'].includes(status)) {
-          throw new Error(`Status inválido na linha ${linha}.`);
-        }
-
-        vendas.push({
-          id,
-          data: dataFormatada,
-          produto: venda['Produto'],
-          categoria: venda['Categoria'],
-          cliente: venda['Cliente'],
-          vendedor: venda['Vendedor'],
-          quantidade: Number(venda['Quantidade']),
-          preco_unitario: Number(venda['Preço Unitário']),
-          pagamento,
-          status,
-          faturamento: Number(venda['Valor Líquido'])
+      if (
+        erros.length > 0
+      ) {
+        return res.status(400).json({
+          erro:
+            'O arquivo possui registros inválidos e não foi importado.',
+          totalRegistros:
+            dados.length,
+          registrosValidos:
+            vendas.length,
+          registrosComErro:
+            erros.length,
+          detalhes:
+            erros.slice(
+              0,
+              50
+            )
         });
       }
 
-      /*
-        Monta todos os valores antes de alterar o banco.
-      */
-      /*
-        Uma única operação para apagar e inserir os dados.
-      */
       await sql.transaction([
-        sql`DELETE FROM vendas`,
+        sql`
+          DELETE FROM vendas
+        `,
         sql`
           INSERT INTO vendas (
             id,
@@ -693,7 +1043,9 @@ app.post(
             x.pagamento,
             x.status,
             x.faturamento
-          FROM json_to_recordset(${JSON.stringify(vendas)}) AS x(
+          FROM json_to_recordset(
+            ${JSON.stringify(vendas)}
+          ) AS x(
             id integer,
             data text,
             produto text,
@@ -711,14 +1063,23 @@ app.post(
 
       res.json({
         sucesso: true,
-        mensagem: 'Dados atualizados com sucesso.',
-        registros: vendas.length
+        mensagem:
+          'Dados validados e atualizados com sucesso.',
+        registros:
+          vendas.length,
+        arquivo:
+          req.file.originalname
       });
     } catch (erro) {
-      console.error('Erro ao importar vendas:', erro);
+      console.error(
+        'Erro ao importar vendas:',
+        erro
+      );
 
       res.status(400).json({
-        erro: erro.message
+        erro:
+          erro.message ||
+          'Erro ao processar o arquivo Excel.'
       });
     }
   }
@@ -739,7 +1100,6 @@ app.get(
 
       const query = `
         SELECT
-
           id AS "ID",
           data AS "Data",
           produto AS "Produto",
@@ -751,21 +1111,21 @@ app.get(
           pagamento AS "Pagamento",
           status AS "Status",
           faturamento AS "Faturamento"
-
         FROM vendas
-
         ${where}
-
         ORDER BY data DESC
       `;
 
-      const rows = await sql.query(
-        query,
-        params
-      );
+      const rows =
+        await sql.query(
+          query,
+          params
+        );
 
       const worksheet =
-        XLSX.utils.json_to_sheet(rows);
+        XLSX.utils.json_to_sheet(
+          rows
+        );
 
       worksheet['!cols'] = [
         { wch: 8 },
@@ -790,13 +1150,14 @@ app.get(
         'Vendas'
       );
 
-      const arquivo = XLSX.write(
-        workbook,
-        {
-          type: 'buffer',
-          bookType: 'xlsx'
-        }
-      );
+      const arquivo =
+        XLSX.write(
+          workbook,
+          {
+            type: 'buffer',
+            bookType: 'xlsx'
+          }
+        );
 
       const nomeArquivo =
         `relatorio-vendas-${new Date()
@@ -821,7 +1182,8 @@ app.get(
       );
 
       res.status(400).json({
-        erro: erro.message
+        erro:
+          erro.message
       });
     }
   }
@@ -836,7 +1198,8 @@ app.use(
     console.error(err);
 
     res.status(500).json({
-      erro: 'Erro interno do servidor.'
+      erro:
+        'Erro interno do servidor.'
     });
   }
 );
