@@ -2521,34 +2521,88 @@ transition-duration:.01ms!important
 
 
 .alertas-panel{
-display:flex;
-flex-direction:column;
-gap:8px;
+background:#fff;
+border:1px solid #e2e8f0;
+border-radius:18px;
+padding:18px 20px;
 margin:0 0 18px 0;
+box-shadow:0 8px 24px rgba(15,23,42,.05);
 }
-.alertas-titulo{
-font-size:11px;
-font-weight:800;
-letter-spacing:.08em;
-color:#64748b;
-text-transform:uppercase;
-}
-.alertas-item{
+.alertas-head{
 display:flex;
 align-items:center;
 gap:10px;
-padding:11px 14px;
-border-radius:12px;
-font-size:13px;
-font-weight:600;
-background:#fff;
-border:1px solid #e2e8f0;
-border-left:5px solid #94a3b8;
-color:#0f172a;
+margin-bottom:14px;
 }
-.alertas-item.red{border-left-color:#dc2626;background:#fef2f2}
-.alertas-item.orange{border-left-color:#d97706;background:#fffbeb}
-.alertas-item.green{border-left-color:#16a34a;background:#f0fdf4}
+.alertas-titulo{
+font-size:12px;
+font-weight:800;
+letter-spacing:.1em;
+color:#0f172a;
+text-transform:uppercase;
+}
+.alertas-count{
+background:#0f172a;
+color:#f3d477;
+font-size:11px;
+font-weight:800;
+padding:2px 9px;
+border-radius:999px;
+}
+.alertas-grid{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+gap:12px;
+}
+.alertas-item{
+display:flex;
+align-items:flex-start;
+gap:12px;
+padding:14px;
+border-radius:14px;
+background:#f8fafc;
+border:1px solid #e2e8f0;
+border-top:3px solid #94a3b8;
+}
+.alertas-item.red{border-top-color:#dc2626}
+.alertas-item.orange{border-top-color:#d97706}
+.alertas-item.green{border-top-color:#16a34a}
+.alertas-icone{
+flex:0 0 28px;
+height:28px;
+border-radius:50%;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:14px;
+font-weight:800;
+color:#fff;
+background:#94a3b8;
+}
+.alertas-item.red .alertas-icone{background:#dc2626}
+.alertas-item.orange .alertas-icone{background:#d97706}
+.alertas-item.green .alertas-icone{background:#16a34a}
+.alertas-rotulo{
+font-size:10px;
+font-weight:800;
+letter-spacing:.09em;
+text-transform:uppercase;
+margin-bottom:3px;
+color:#64748b;
+}
+.alertas-item.red .alertas-rotulo{color:#dc2626}
+.alertas-item.orange .alertas-rotulo{color:#b45309}
+.alertas-item.green .alertas-rotulo{color:#15803d}
+.alertas-texto{
+font-size:13px;
+line-height:1.45;
+color:#334155;
+font-weight:500;
+}
+.alertas-texto strong{
+color:#0f172a;
+font-weight:800;
+}
 </style>
 
 <link rel="stylesheet" href="/mobile.css">
@@ -5269,7 +5323,7 @@ const abaixo=lista.filter(x=>x.fat<media*ALERTA_ABAIXO_DA_MEDIA);
 
 if(abaixo.length){
 
-alertas.push({nivel:"red",icone:"🔴",texto:abaixo.length+" vendedor(es) com menos de "+Math.round(ALERTA_ABAIXO_DA_MEDIA*100)+"% da média do time: "+abaixo.slice(0,3).map(x=>escaparHtml(x.nome)).join(", ")+(abaixo.length>3?"...":"")+"."});
+alertas.push({nivel:"red",icone:"🔴",texto:(abaixo.length===1?"1 vendedor está":abaixo.length+" vendedores estão")+" com menos de "+Math.round(ALERTA_ABAIXO_DA_MEDIA*100)+"% da média do time: "+abaixo.slice(0,3).map(x=>escaparHtml(x.nome)).join(", ")+(abaixo.length>3?"...":"")+"."});
 
 }
 
@@ -5299,11 +5353,23 @@ alertas.push({nivel:"green",icone:"✅",texto:"Nenhum alerta no período analisa
 
 }
 
+const rotulos={red:"Crítico",orange:"Atenção",green:"Positivo"};
+const simbolos={red:"!",orange:"!",green:"✓"};
+const destacar=t=>t.replace(/(\d+(?:,\d+)?%)/g,"<strong>$1</strong>");
+const qtd=alertas.filter(a=>a.texto.indexOf("Nenhum")!==0).length;
+
 box.innerHTML=
-'<div class="alertas-titulo">Alertas automáticos</div>'+
+'<div class="alertas-head"><span class="alertas-titulo">Alertas automáticos</span>'+
+(qtd?'<span class="alertas-count">'+qtd+'</span>':'')+
+'</div>'+
+'<div class="alertas-grid">'+
 alertas.map(a=>
-'<div class="alertas-item '+a.nivel+'"><span>'+a.icone+'</span><span>'+a.texto+'</span></div>'
-).join("");
+'<div class="alertas-item '+a.nivel+'">'+
+'<span class="alertas-icone">'+simbolos[a.nivel]+'</span>'+
+'<div class="alertas-corpo"><div class="alertas-rotulo">'+rotulos[a.nivel]+'</div>'+
+'<div class="alertas-texto">'+destacar(a.texto)+'</div></div></div>'
+).join("")+
+'</div>';
 
 }
 
