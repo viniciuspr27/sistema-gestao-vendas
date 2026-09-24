@@ -1123,6 +1123,72 @@ app.get(
 );
 
 /* ================================
+   CATEGORIAS
+================================ */
+
+app.get(
+  '/api/categorias',
+  authRequired,
+  async (req, res) => {
+    try {
+      const { where, params } = obterFiltros(req.query);
+
+      const rows = await sql.query(
+        `
+        SELECT
+          COALESCE(categoria, 'Não informado') AS categoria,
+          ROUND(SUM(CASE WHEN status = 'Pago' THEN faturamento ELSE 0 END)::numeric, 2) AS faturamento,
+          SUM(CASE WHEN status = 'Pago' THEN 1 ELSE 0 END) AS vendas
+        FROM vendas
+        ${where}
+        GROUP BY COALESCE(categoria, 'Não informado')
+        ORDER BY faturamento DESC
+        `,
+        params
+      );
+
+      res.json(rows);
+    } catch (erro) {
+      console.error(erro);
+      res.status(400).json({ erro: erro.message });
+    }
+  }
+);
+
+/* ================================
+   FORMAS DE PAGAMENTO
+================================ */
+
+app.get(
+  '/api/pagamentos',
+  authRequired,
+  async (req, res) => {
+    try {
+      const { where, params } = obterFiltros(req.query);
+
+      const rows = await sql.query(
+        `
+        SELECT
+          COALESCE(pagamento, 'Não informado') AS pagamento,
+          SUM(CASE WHEN status = 'Pago' THEN 1 ELSE 0 END) AS vendas,
+          ROUND(SUM(CASE WHEN status = 'Pago' THEN faturamento ELSE 0 END)::numeric, 2) AS faturamento
+        FROM vendas
+        ${where}
+        GROUP BY COALESCE(pagamento, 'Não informado')
+        ORDER BY vendas DESC
+        `,
+        params
+      );
+
+      res.json(rows);
+    } catch (erro) {
+      console.error(erro);
+      res.status(400).json({ erro: erro.message });
+    }
+  }
+);
+
+/* ================================
    LISTAGEM DE VENDAS
 ================================ */
 
