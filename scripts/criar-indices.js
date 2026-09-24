@@ -1,10 +1,10 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config({ path: path.resolve(__dirname, '.env.development.local') });
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '..', '.env.development.local') });
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
-const sql = require('./src/db');
+const sql = require('../src/db');
 
 const indices = [
   'CREATE INDEX IF NOT EXISTS idx_vendas_data ON vendas (data)',
