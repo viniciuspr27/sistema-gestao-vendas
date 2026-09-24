@@ -249,23 +249,7 @@ function prepararLinhaParaImportacao(linha) {
   const novaLinha = {
     ...linha
   };
-
-  if (
-    Object.prototype.hasOwnProperty.call(
-      novaLinha,
-      'Data'
-    )
-  ) {
-    const data =
-      normalizarDataImportacao(
-        novaLinha.Data
-      );
-
-    if (data) {
-      novaLinha.Data =
-        data;
-    }
-  }
+
 
   if (
     Object.prototype.hasOwnProperty.call(
