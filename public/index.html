@@ -3218,16 +3218,6 @@ Refine os dados para encontrar exatamente o que precisa.
 
 </div>
 
-<div class="filter-group">
-
-<label>Canal de venda</label>
-
-<select id="filtroCanal">
-<option value="">Todos os canais</option>
-</select>
-
-</div>
-
 </div>
 
 <div class="filter-actions">
@@ -3700,7 +3690,6 @@ onclick="exportarExcel()"
 <th>Preço unit.</th>
 <th>Faturamento</th>
 <th>Pagamento</th>
-<th>Canal</th>
 <th>Status</th>
 
 </tr>
@@ -3712,7 +3701,7 @@ onclick="exportarExcel()"
 <tr>
 
 <td
-colspan="11"
+colspan="10"
 class="table-loading"
 >
 Carregando vendas...
@@ -4347,8 +4336,7 @@ function obterFiltrosExtras(){
 return{
 categoria:$("filtroCategoria").value,
 status:$("filtroStatus").value,
-pagamento:$("filtroPagamento").value,
-canal:$("filtroCanal").value
+pagamento:$("filtroPagamento").value
 };
 
 }
@@ -4400,11 +4388,6 @@ itens.push(
 "Pagamento: "+$("filtroPagamento").value
 );
 
-if($("filtroCanal").value)
-itens.push(
-"Canal: "+$("filtroCanal").value
-);
-
 const box=$("filterStatus");
 
 box.textContent=
@@ -4451,8 +4434,7 @@ async function limparFiltros(){
 "filtroProduto",
 "filtroCategoria",
 "filtroStatus",
-"filtroPagamento",
-"filtroCanal"
+"filtroPagamento"
 ].forEach(
 id=>$(id).value=""
 );
@@ -6280,7 +6262,7 @@ async function carregarTabelaVendas(){
 const tabela=$("tabelaVendas");
 
 tabela.innerHTML=
-'<tr><td colspan="11" class="table-loading">Carregando vendas...</td></tr>';
+'<tr><td colspan="10" class="table-loading">Carregando vendas...</td></tr>';
 
 try{
 
@@ -6310,7 +6292,7 @@ filtrarTabela();
 }catch(e){
 
 tabela.innerHTML=
-`<tr><td colspan="11" class="table-empty">${escaparHtml(e.message)}</td></tr>`;
+`<tr><td colspan="10" class="table-empty">${escaparHtml(e.message)}</td></tr>`;
 
 }
 
@@ -6398,7 +6380,7 @@ inicio+itensPorPagina
 if(!pagina.length){
 
 tabela.innerHTML=
-'<tr><td colspan="11" class="table-empty">Nenhuma venda encontrada.</td></tr>';
+'<tr><td colspan="10" class="table-empty">Nenhuma venda encontrada.</td></tr>';
 
 }else{
 
@@ -6437,8 +6419,6 @@ ${Number(v.quantidade||0).toLocaleString("pt-BR")}
 <td>${money(v.faturamento)}</td>
 
 <td>${escaparHtml(v.pagamento)}</td>
-
-<td>${escaparHtml(v.canal)}</td>
 
 <td>
 
@@ -6521,7 +6501,6 @@ const headers=[
 "Preço unitário",
 "Faturamento",
 "Pagamento",
-"Canal",
 "Status"
 ];
 
@@ -6537,7 +6516,6 @@ v.quantidade,
 v.preco_unitario,
 v.faturamento,
 v.pagamento,
-v.canal,
 v.status
 
 ]);
@@ -6905,7 +6883,7 @@ await carregarDashboard();
 console.error(e);
 
 $("tabelaVendas").innerHTML=
-`<tr><td colspan="11" class="table-empty">${escaparHtml(e.message)}</td></tr>`;
+`<tr><td colspan="10" class="table-empty">${escaparHtml(e.message)}</td></tr>`;
 
 }
 
