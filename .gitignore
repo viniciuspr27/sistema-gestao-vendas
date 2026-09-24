@@ -11,3 +11,4 @@ data/
 src/backups/
 public/backups/
 src/server-antes-*.js
+_arquivo/
