@@ -3776,6 +3776,7 @@ let chartPagamentos=null;
 let vendasTabela=[];
 let vendasFiltradas=[];
 let vendasOriginais=[];
+let destaquesServidor=null;
 
 let paginaAtual=1;
 
@@ -5193,12 +5194,7 @@ async function carregarDashboard(){
 const q=
 obterQueryFiltros();
 
-const[
-k,
-m,
-v,
-p
-]=await Promise.all([
+const[k,m,v,p,catsServidor,pagsServidor]=await Promise.all([
 
 api(`/api/kpis${q}`),
 
@@ -5206,9 +5202,12 @@ api(`/api/vendas-mensais${q}`),
 
 api(`/api/vendedores${q}`),
 
-api(`/api/produtos${q}`)
-
+api(`/api/produtos${q}`),
+api(`/api/categorias${q}`),
+api(`/api/pagamentos${q}`)
 ]);
+
+destaquesServidor={produtos:p,vendedores:v,categorias:catsServidor};
 
 await carregarTabelaVendas();
 
@@ -5750,11 +5749,7 @@ CATEGORIAS
 ========================================================= */
 
 const categorias=
-agruparPorCampo(
-dadosExtras,
-"categoria",
-"faturamento"
-);
+agruparPorCampo(catsServidor.map(c=>({categoria:c.categoria,faturamento:c.faturamento})),"categoria","faturamento");
 
 const coresCategorias=[
 "#d4af37",
@@ -5951,10 +5946,7 @@ PAGAMENTOS
 ========================================================= */
 
 const pagamentos=
-contarPorCampo(
-dadosExtras,
-"pagamento"
-);
+contarPorCampo(pagsServidor.flatMap(x=>Array.from({length:Number(x.vendas||0)},()=>({pagamento:x.pagamento}))),"pagamento");
 
 chartPagamentos=
 new Chart(
@@ -6224,25 +6216,13 @@ vendedores
 ){
 
 const produtos=
-agruparPorCampo(
-dados,
-"produto",
-"faturamento"
-);
+agruparPorCampo(destaquesServidor?destaquesServidor.produtos:dados,"produto","faturamento");
 
 const categorias=
-agruparPorCampo(
-dados,
-"categoria",
-"faturamento"
-);
+agruparPorCampo(destaquesServidor?destaquesServidor.categorias:dados,"categoria","faturamento");
 
 const vend=
-agruparPorCampo(
-dados,
-"vendedor",
-"faturamento"
-);
+agruparPorCampo(destaquesServidor?destaquesServidor.vendedores:dados,"vendedor","faturamento");
 
 if(produtos.labels.length){
 
