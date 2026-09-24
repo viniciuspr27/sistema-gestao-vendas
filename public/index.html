@@ -4208,6 +4208,24 @@ p.set(
 $("filtroProduto").value
 );
 
+if($("filtroCategoria").value)
+p.set(
+"categoria",
+$("filtroCategoria").value
+);
+
+if($("filtroStatus").value)
+p.set(
+"status",
+$("filtroStatus").value
+);
+
+if($("filtroPagamento").value)
+p.set(
+"pagamento",
+$("filtroPagamento").value
+);
+
 return p.toString()
 ?`?${p.toString()}`
 :"";
@@ -4216,14 +4234,13 @@ return p.toString()
 
 async function carregarFiltros(){
 
-const d=
-await api("/api/filtros");
+const d=await api("/api/filtros");
 
-const vendedor=
-$("filtroVendedor");
-
-const produto=
-$("filtroProduto");
+const vendedor=$("filtroVendedor");
+const produto=$("filtroProduto");
+const categoria=$("filtroCategoria");
+const status=$("filtroStatus");
+const pagamento=$("filtroPagamento");
 
 vendedor.innerHTML=
 '<option value="">Todos os vendedores</option>';
@@ -4231,13 +4248,21 @@ vendedor.innerHTML=
 produto.innerHTML=
 '<option value="">Todos os produtos</option>';
 
+categoria.innerHTML=
+'<option value="">Todas as categorias</option>';
+
+status.innerHTML=
+'<option value="">Todos os status</option>';
+
+pagamento.innerHTML=
+'<option value="">Todos os pagamentos</option>';
+
 (d.vendedores||[]).forEach(x=>{
 
-const o=
-document.createElement("option");
+const o=document.createElement("option");
 
-o.value=x.vendedor;
-o.textContent=x.vendedor;
+o.value=x;
+o.textContent=x;
 
 vendedor.appendChild(o);
 
@@ -4245,57 +4270,47 @@ vendedor.appendChild(o);
 
 (d.produtos||[]).forEach(x=>{
 
-const o=
-document.createElement("option");
+const o=document.createElement("option");
 
-o.value=x.produto;
-o.textContent=x.produto;
+o.value=x;
+o.textContent=x;
 
 produto.appendChild(o);
 
 });
 
-}
+(d.categorias||[]).forEach(x=>{
 
-function preencherFiltrosExtras(){
+const o=document.createElement("option");
 
-const categorias=new Set();
-const status=new Set();
-const pagamentos=new Set();
-const canais=new Set();
+o.value=x;
+o.textContent=x;
 
-vendasOriginais.forEach(v=>{
-
-if(v.categoria)categorias.add(v.categoria);
-if(v.status)status.add(v.status);
-if(v.pagamento)pagamentos.add(v.pagamento);
-if(v.canal)canais.add(v.canal);
+categoria.appendChild(o);
 
 });
 
-preencherSelect(
-"filtroCategoria",
-categorias,
-"Todas as categorias"
-);
+(d.status||[]).forEach(x=>{
 
-preencherSelect(
-"filtroStatus",
-status,
-"Todos os status"
-);
+const o=document.createElement("option");
 
-preencherSelect(
-"filtroPagamento",
-pagamentos,
-"Todos os pagamentos"
-);
+o.value=x;
+o.textContent=x;
 
-preencherSelect(
-"filtroCanal",
-canais,
-"Todos os canais"
-);
+status.appendChild(o);
+
+});
+
+(d.pagamentos||[]).forEach(x=>{
+
+const o=document.createElement("option");
+
+o.value=x;
+o.textContent=x;
+
+pagamento.appendChild(o);
+
+});
 
 }
 
@@ -4339,26 +4354,9 @@ canal:$("filtroCanal").value
 
 function aplicarFiltrosExtras(dados){
 
-const f=
-obterFiltrosExtras();
-
-return dados.filter(v=>{
-
-if(f.categoria&&v.categoria!==f.categoria)
-return false;
-
-if(f.status&&v.status!==f.status)
-return false;
-
-if(f.pagamento&&v.pagamento!==f.pagamento)
-return false;
-
-if(f.canal&&v.canal!==f.canal)
-return false;
-
-return true;
-
-});
+return Array.isArray(dados)
+? dados
+: [];
 
 }
 
@@ -4990,21 +4988,34 @@ async function carregarComparacao(){
 
 try{
 
-const query=
-obterQueryComparacao();
+const intervalo =
+obterIntervaloAtual();
 
-if(!query){
+if(!intervalo){
 
 limparComparacoes();
 
-return;
+return null;
 
 }
 
-const anterior=
-await api(`/api/kpis${query}`);
+const query =
+obterQueryFiltros();
 
-return anterior;
+const comparacao =
+await api(
+`/api/comparacao-periodos${query}`
+);
+
+if(!comparacao || !comparacao.disponivel){
+
+limparComparacoes();
+
+return null;
+
+}
+
+return comparacao;
 
 }catch(e){
 
@@ -5089,80 +5100,32 @@ atual,
 anterior
 ){
 
-const fat=
-Number(atual?.faturamento_pago||0);
+const fat =
+Number(atual?.atual?.faturamento || 0);
 
-const vendas=
-Number(atual?.vendas_pagas||0);
+const vendas =
+Number(atual?.atual?.vendas || 0);
 
-const ticket=
-Number(atual?.ticket_medio||0);
+const ticket =
+Number(atual?.atual?.ticket_medio || 0);
 
-const pctFat=
-diferencaPercentual(
-fat,
-Number(anterior?.faturamento_pago||0)
+const pctFat =
+Number(
+atual?.variacao?.faturamento ?? 0
 );
 
-$("performanceFaturamento").textContent=
+$("performanceFaturamento").textContent =
 money(fat);
 
-$("performanceVendas").textContent=
+$("performanceVendas").textContent =
 vendas.toLocaleString("pt-BR");
 
-$("performanceTicket").textContent=
+$("performanceTicket").textContent =
 money(ticket);
-
-$("performanceFaturamentoChange").textContent=
-`${pctFat>=0?"↑":"↓"} ${Math.abs(pctFat).toFixed(1).replace(".",",")}% vs. período anterior`;
-
-$("performanceFaturamentoChange").style.color=
-pctFat>=0?"#15803d":"#dc2626";
-
-const pctVendas=
-diferencaPercentual(
-vendas,
-Number(anterior?.vendas_pagas||0)
-);
-
-$("performanceVendasChange").textContent=
-`${pctVendas>=0?"↑":"↓"} ${Math.abs(pctVendas).toFixed(1).replace(".",",")}% vs. período anterior`;
-
-$("performanceVendasChange").style.color=
-pctVendas>=0?"#15803d":"#dc2626";
-
-const pctTicket=
-diferencaPercentual(
-ticket,
-Number(anterior?.ticket_medio||0)
-);
-
-$("performanceTicketChange").textContent=
-`${pctTicket>=0?"↑":"↓"} ${Math.abs(pctTicket).toFixed(1).replace(".",",")}% vs. período anterior`;
-
-$("performanceTicketChange").style.color=
-pctTicket>=0?"#15803d":"#dc2626";
-
-const intervalo=
-obterIntervaloAtual();
-
-const periodoAnterior=
-calcularPeriodoAnterior(intervalo);
-
-if(intervalo&&periodoAnterior){
-
-$("performanceSubtitle").textContent=
-`${formatarData(intervalo.inicio)} → ${formatarData(intervalo.fim)}  •  comparação com ${formatarData(periodoAnterior.inicio)} → ${formatarData(periodoAnterior.fim)}`;
-
-}
 
 return pctFat;
 
 }
-
-/* =========================================================
-META
-========================================================= */
 
 function atualizarMeta(faturamento){
 
@@ -5218,7 +5181,7 @@ $("metaRestante").textContent=
 `Meta superada em ${money(valor-META_FATURAMENTO)}`;
 
 $("metaMensagem").textContent=
-`🎉 Meta atingida! O faturamento ultrapassou o objetivo em ${money(valor-META_FATURAMENTO)}.`;
+`Meta atingida. O faturamento ultrapassou o objetivo em ${money(valor-META_FATURAMENTO)}.`;
 
 }
 
@@ -5295,26 +5258,26 @@ if(anterior){
 
 atualizarComparacaoElemento(
 "fatComparacao",
-k.faturamento_pago,
-anterior.faturamento_pago
+anterior.atual.faturamento,
+anterior.anterior.faturamento
 );
 
 atualizarComparacaoElemento(
 "vendasComparacao",
-k.vendas_pagas,
-anterior.vendas_pagas
+anterior.atual.vendas,
+anterior.anterior.vendas
 );
 
 atualizarComparacaoElemento(
 "ticketComparacao",
-k.ticket_medio,
-anterior.ticket_medio
+anterior.atual.ticket_medio,
+anterior.anterior.ticket_medio
 );
 
 atualizarComparacaoElemento(
 "itensComparacao",
-k.itens_vendidos,
-anterior.itens_vendidos
+anterior.atual.itens_vendidos,
+anterior.anterior.itens_vendidos
 );
 
 atualizarComparacaoElemento(
@@ -5522,112 +5485,124 @@ rankingVendedores.map(
 x=>Number(x.faturamento)
 );
 
-chartVendedores=
-new Chart(
-$("vendedores"),
-{
+chartVendedores = new Chart($("vendedores"), {
+type: "bar",
 
-type:"bar",
-
-data:{
-
-labels:nomesVendedores,
-
-datasets:[{
-
-data:valoresVendedores,
-
-backgroundColor:
-coresRanking(rankingVendedores),
-
-borderColor:
-bordasRanking(rankingVendedores),
-
-borderWidth:1,
-borderRadius:7,
-borderSkipped:false,
-barThickness:24,
-maxBarThickness:28
-
+data: {
+labels: nomesVendedores,
+datasets: [{
+data: valoresVendedores,
+backgroundColor: coresRanking(rankingVendedores),
+borderColor: bordasRanking(rankingVendedores),
+borderWidth: 1,
+borderRadius: 7,
+borderSkipped: false,
+barThickness: 24,
+maxBarThickness: 28
 }]
-
 },
 
-options:{
-
+options: {
 ...opcoesGrafico(true),
 
-layout:{
-padding:{
-left:4,
-right:12,
-top:5,
-bottom:5
+layout: {
+padding: {
+left: 4,
+right: 12,
+top: 5,
+bottom: 5
 }
 },
 
-plugins:{
-
-legend:{display:false},
-
-tooltip:{
-
-backgroundColor:"#111827",
-titleColor:"#fff",
-bodyColor:"#e5e7eb",
-borderColor:"rgba(148,163,184,.45)",
-borderWidth:1,
-padding:12,
-displayColors:true,
-
-callbacks:{
-label:c=>
-` Faturamento: ${money(c.raw)}`
-}
-
-}
-
+plugins: {
+legend: {
+display: false
 },
 
-scales:{
+tooltip: {
+backgroundColor: "#111827",
+titleColor: "#f8fafc",
+bodyColor: "#f3d477",
+borderColor: "#c49a32",
+borderWidth: 1,
+padding: 12,
+displayColors: false,
 
-x:{
+callbacks: {
+title: items => items.length ? items[0].label : "",
 
-beginAtZero:true,
+label: context => {
+const vendedor = rankingVendedores[context.dataIndex];
 
-grid:{
-color:"rgba(148,163,184,.10)"
+if (!vendedor) {
+return "";
+}
+
+return [
+"Faturamento: " + money(Number(vendedor.faturamento || 0)),
+"Vendas: " + Number(vendedor.vendas || 0).toLocaleString("pt-BR"),
+"Itens: " + Number(vendedor.itens || 0).toLocaleString("pt-BR")
+];
+}
+}
 },
 
-ticks:{
-color:"#64748b",
-font:{size:9},
-callback:value=>money(value)
+},
+onClick: (event, elements) => {
+if (!elements.length) {
+return;
 }
 
+const indice = elements[0].index;
+const vendedor = rankingVendedores[indice] && rankingVendedores[indice].vendedor;
+
+if (!vendedor) {
+return;
+}
+
+const filtro = $("filtroVendedor");
+
+if (filtro) {
+filtro.value = vendedor;
+}
+
+carregarDashboard();
 },
 
-y:{
+scales: {
+x: {
+beginAtZero: true,
 
-grid:{display:false},
-
-ticks:{
-color:"#334155",
-font:{
-size:10,
-weight:"700"
+grid: {
+color: "rgba(148,163,184,.10)"
 },
-padding:6
-}
 
+ticks: {
+color: "#64748b",
+font: {
+size: 9
+},
+callback: value => money(value)
 }
+},
 
-}
+y: {
+grid: {
+display: false
+},
 
+ticks: {
+color: "#334155",
+font: {
+size: 10,
+weight: "700"
+},
+padding: 6
 }
-
 }
-);
+}
+}
+});
 
 /* =========================================================
 TOP PRODUTOS
@@ -5699,22 +5674,40 @@ legend:{display:false},
 tooltip:{
 
 backgroundColor:"#111827",
-titleColor:"#fff",
-bodyColor:"#e5e7eb",
-borderColor:"rgba(148,163,184,.45)",
+titleColor:"#f8fafc",
+bodyColor:"#f3d477",
+borderColor:"#c49a32",
 borderWidth:1,
 padding:12,
-displayColors:true,
+displayColors:false,
 
 callbacks:{
-label:c=>
-` Faturamento: ${money(c.raw)}`
+
+title:items =>
+items.length
+? items[0].label
+: "",
+
+label:context => {
+
+const produto =
+topProdutos[context.dataIndex];
+
+if(!produto)return "";
+
+return [
+`Faturamento: ${money(Number(produto.faturamento||0))}`,
+`Vendas: ${Number(produto.vendas||0).toLocaleString("pt-BR")}`,
+`Itens: ${Number(produto.itens||0).toLocaleString("pt-BR")}`
+];
+
 }
 
 }
 
 },
 
+},
 scales:{
 
 x:{
@@ -6327,7 +6320,6 @@ Array.isArray(dados)
 ?dados
 :[];
 
-preencherFiltrosExtras();
 
 vendasTabela=
 aplicarFiltrosExtras(
