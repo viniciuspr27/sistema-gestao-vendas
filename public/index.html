@@ -2519,6 +2519,36 @@ transition-duration:.01ms!important
   color: #fbbf24;
 }
 
+
+.alertas-panel{
+display:flex;
+flex-direction:column;
+gap:8px;
+margin:0 0 18px 0;
+}
+.alertas-titulo{
+font-size:11px;
+font-weight:800;
+letter-spacing:.08em;
+color:#64748b;
+text-transform:uppercase;
+}
+.alertas-item{
+display:flex;
+align-items:center;
+gap:10px;
+padding:11px 14px;
+border-radius:12px;
+font-size:13px;
+font-weight:600;
+background:#fff;
+border:1px solid #e2e8f0;
+border-left:5px solid #94a3b8;
+color:#0f172a;
+}
+.alertas-item.red{border-left-color:#dc2626;background:#fef2f2}
+.alertas-item.orange{border-left-color:#d97706;background:#fffbeb}
+.alertas-item.green{border-left-color:#16a34a;background:#f0fdf4}
 </style>
 
 <link rel="stylesheet" href="/mobile.css">
@@ -3334,6 +3364,8 @@ KPIs
 <!-- =========================================================
 DESEMPENHO + META
 ========================================================= -->
+
+<div id="alertasPanel" class="alertas-panel"></div>
 
 <div class="performance-panel">
 
@@ -5171,6 +5203,110 @@ $("metaMensagem").textContent=
 DASHBOARD
 ========================================================= */
 
+const ALERTA_VARIACAO_PCT=10;
+const ALERTA_CONCENTRACAO_VENDEDOR_PCT=25;
+const ALERTA_CONCENTRACAO_CATEGORIA_PCT=30;
+const ALERTA_ABAIXO_DA_MEDIA=0.5;
+
+function renderizarAlertas(kpis,vendedores,categorias,comp){
+
+const box=$("alertasPanel");
+
+if(!box)return;
+
+const alertas=[];
+
+const pct=n=>
+Math.abs(n).toFixed(1).replace(".",",")+"%";
+
+if(comp&&comp.variacao){
+
+const vf=comp.variacao.faturamento;
+
+if(vf!==null&&vf!==undefined){
+
+if(vf<=-ALERTA_VARIACAO_PCT){
+
+alertas.push({nivel:"red",icone:"🔴",texto:"Faturamento caiu "+pct(vf)+" em relação ao período anterior."});
+
+}else if(vf>=ALERTA_VARIACAO_PCT){
+
+alertas.push({nivel:"green",icone:"🟢",texto:"Faturamento cresceu "+pct(vf)+" em relação ao período anterior."});
+
+}
+
+}
+
+const vt=comp.variacao.ticket_medio;
+
+if(vt!==null&&vt!==undefined&&vt<=-ALERTA_VARIACAO_PCT){
+
+alertas.push({nivel:"orange",icone:"🟠",texto:"Ticket médio caiu "+pct(vt)+" em relação ao período anterior."});
+
+}
+
+}
+
+const lista=(Array.isArray(vendedores)?vendedores:[])
+.map(x=>({nome:x.vendedor,fat:Number(x.faturamento||0)}))
+.sort((a,b)=>b.fat-a.fat);
+
+const totalVend=lista.reduce((t,x)=>t+x.fat,0);
+
+if(lista.length>=3&&totalVend>0){
+
+const share=(lista[0].fat/totalVend)*100;
+
+if(share>=ALERTA_CONCENTRACAO_VENDEDOR_PCT){
+
+alertas.push({nivel:"orange",icone:"🟠",texto:escaparHtml(lista[0].nome)+" responde por "+pct(share)+" do faturamento do período."});
+
+}
+
+const media=totalVend/lista.length;
+
+const abaixo=lista.filter(x=>x.fat<media*ALERTA_ABAIXO_DA_MEDIA);
+
+if(abaixo.length){
+
+alertas.push({nivel:"red",icone:"🔴",texto:abaixo.length+" vendedor(es) com menos de "+Math.round(ALERTA_ABAIXO_DA_MEDIA*100)+"% da média do time: "+abaixo.slice(0,3).map(x=>escaparHtml(x.nome)).join(", ")+(abaixo.length>3?"...":"")+"."});
+
+}
+
+}
+
+const cats=(Array.isArray(categorias)?categorias:[])
+.map(x=>({nome:x.categoria,fat:Number(x.faturamento||0)}))
+.sort((a,b)=>b.fat-a.fat);
+
+const totalCat=cats.reduce((t,x)=>t+x.fat,0);
+
+if(cats.length>=2&&totalCat>0){
+
+const share=(cats[0].fat/totalCat)*100;
+
+if(share>=ALERTA_CONCENTRACAO_CATEGORIA_PCT){
+
+alertas.push({nivel:"orange",icone:"🟠",texto:"A categoria "+escaparHtml(cats[0].nome)+" concentra "+pct(share)+" do faturamento."});
+
+}
+
+}
+
+if(!alertas.length){
+
+alertas.push({nivel:"green",icone:"✅",texto:"Nenhum alerta no período analisado."});
+
+}
+
+box.innerHTML=
+'<div class="alertas-titulo">Alertas automáticos</div>'+
+alertas.map(a=>
+'<div class="alertas-item '+a.nivel+'"><span>'+a.icone+'</span><span>'+a.texto+'</span></div>'
+).join("");
+
+}
+
 let periodoPadraoAplicado=false;
 
 async function definirPeriodoPadrao(){
@@ -5349,6 +5485,8 @@ $("insightDesempenhoValor").textContent=
 "Selecione um período com dados para comparar automaticamente o desempenho.";
 
 }
+
+renderizarAlertas(k,v,catsServidor,anterior);
 
 destroyCharts();
 
