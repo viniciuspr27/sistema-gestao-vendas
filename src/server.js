@@ -538,7 +538,10 @@ function obterFiltros(query) {
     dataInicio,
     dataFim,
     vendedor,
-    produto
+    produto,
+    categoria,
+    pagamento,
+    status
   } = query;
 
   const conditions = [];
@@ -549,10 +552,7 @@ function obterFiltros(query) {
       throw new Error('Data inicial inválida.');
     }
 
-    conditions.push(
-      `data >= $${params.length + 1}`
-    );
-
+    conditions.push(`data >= $${params.length + 1}`);
     params.push(dataInicio);
   }
 
@@ -561,10 +561,7 @@ function obterFiltros(query) {
       throw new Error('Data final inválida.');
     }
 
-    conditions.push(
-      `data <= $${params.length + 1}`
-    );
-
+    conditions.push(`data <= $${params.length + 1}`);
     params.push(dataFim);
   }
 
@@ -575,19 +572,28 @@ function obterFiltros(query) {
   }
 
   if (vendedor) {
-    conditions.push(
-      `vendedor = $${params.length + 1}`
-    );
-
+    conditions.push(`vendedor = $${params.length + 1}`);
     params.push(vendedor);
   }
 
   if (produto) {
-    conditions.push(
-      `produto = $${params.length + 1}`
-    );
-
+    conditions.push(`produto = $${params.length + 1}`);
     params.push(produto);
+  }
+
+  if (categoria) {
+    conditions.push(`categoria = $${params.length + 1}`);
+    params.push(categoria);
+  }
+
+  if (pagamento) {
+    conditions.push(`pagamento = $${params.length + 1}`);
+    params.push(pagamento);
+  }
+
+  if (status) {
+    conditions.push(`status = $${params.length + 1}`);
+    params.push(status);
   }
 
   const where =
@@ -619,15 +625,38 @@ app.get('/api/filtros', authRequired, async (req, res) => {
       ORDER BY produto
     `;
 
-    res.json({
-      vendedores,
-      produtos
-    });
-  } catch (erro) {
-    console.error(erro);
+    const categorias = await sql`
+      SELECT DISTINCT categoria
+      FROM vendas
+      WHERE categoria IS NOT NULL
+      ORDER BY categoria
+    `;
 
+    const pagamentos = await sql`
+      SELECT DISTINCT pagamento
+      FROM vendas
+      WHERE pagamento IS NOT NULL
+      ORDER BY pagamento
+    `;
+
+    const status = await sql`
+      SELECT DISTINCT status
+      FROM vendas
+      WHERE status IS NOT NULL
+      ORDER BY status
+    `;
+
+    res.json({
+      vendedores: vendedores.map(item => item.vendedor),
+      produtos: produtos.map(item => item.produto),
+      categorias: categorias.map(item => item.categoria),
+      pagamentos: pagamentos.map(item => item.pagamento),
+      status: status.map(item => item.status)
+    });
+  } catch (error) {
+    console.error('Erro ao carregar filtros:', error);
     res.status(500).json({
-      erro: 'Erro ao carregar filtros.'
+      error: 'Erro ao carregar opções dos filtros.'
     });
   }
 });
@@ -692,6 +721,241 @@ app.get('/api/kpis', authRequired, async (req, res) => {
     );
 
     res.json(rows[0]);
+  } catch (erro) {
+    console.error(erro);
+
+    res.status(400).json({
+      erro: erro.message
+    });
+  }
+});
+
+
+/* ================================
+   COMPARAÇÃO DE PERÍODOS
+================================ */
+
+app.get('/api/comparacao-periodos', authRequired, async (req, res) => {
+  try {
+    const dataInicio = String(req.query.dataInicio || '').trim();
+    const dataFim = String(req.query.dataFim || '').trim();
+
+    if (!dataInicio || !dataFim) {
+      return res.json({
+        disponivel: false,
+        motivo: 'Informe dataInicio e dataFim para comparar períodos.'
+      });
+    }
+
+    const inicio = new Date(`${dataInicio}T00:00:00`);
+    const fim = new Date(`${dataFim}T00:00:00`);
+
+    if (
+      Number.isNaN(inicio.getTime()) ||
+      Number.isNaN(fim.getTime()) ||
+      inicio > fim
+    ) {
+      return res.status(400).json({
+        erro: 'Período informado inválido.'
+      });
+    }
+
+    const diferencaMs = fim.getTime() - inicio.getTime();
+    const quantidadeDias =
+      Math.floor(diferencaMs / 86400000) + 1;
+
+    const inicioAnterior = new Date(
+      inicio.getTime() - quantidadeDias * 86400000
+    );
+
+    const fimAnterior = new Date(
+      inicio.getTime() - 86400000
+    );
+
+    const formatarData = (data) =>
+      data.toISOString().slice(0, 10);
+
+    const filtrosAtuais = { ...req.query };
+    delete filtrosAtuais.dataInicio;
+    delete filtrosAtuais.dataFim;
+
+    const filtrosComparacao =
+      obterFiltros(filtrosAtuais);
+
+    const whereComparacao =
+      filtrosComparacao.where.replace(
+        /\$(\d+)/g,
+        (_, numero) =>
+          `$${Number(numero) + 4}`
+      );
+
+    const paramsComparacao =
+      filtrosComparacao.params;
+
+    const inicioAtualParam = formatarData(inicio);
+    const fimAtualParam = formatarData(fim);
+    const inicioAnteriorParam = formatarData(inicioAnterior);
+    const fimAnteriorParam = formatarData(fimAnterior);
+
+    const query = `
+      SELECT
+        periodo,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN faturamento
+              ELSE 0
+            END
+          ),
+          0
+        ) AS faturamento,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS vendas,
+        COALESCE(
+          AVG(
+            CASE
+              WHEN status = 'Pago'
+              THEN faturamento
+            END
+          ),
+          0
+        ) AS ticket_medio,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN quantidade
+              ELSE 0
+            END
+          ),
+          0
+        ) AS itens_vendidos
+      FROM (
+        SELECT
+          'atual' AS periodo,
+          faturamento,
+          status,
+          quantidade,
+          vendedor,
+          produto,
+          categoria,
+          pagamento
+        FROM vendas
+        WHERE data::date BETWEEN $1::date AND $2::date
+
+        UNION ALL
+
+        SELECT
+          'anterior' AS periodo,
+          faturamento,
+          status,
+          quantidade,
+          vendedor,
+          produto,
+          categoria,
+          pagamento
+        FROM vendas
+        WHERE data::date BETWEEN $3::date AND $4::date
+      ) base
+      ${whereComparacao}
+      GROUP BY periodo
+      ORDER BY periodo;
+    `;
+
+    const parametros = [
+      inicioAtualParam,
+      fimAtualParam,
+      inicioAnteriorParam,
+      fimAnteriorParam,
+      ...paramsComparacao
+    ];
+
+    const rows = await sql.query(
+      query,
+      parametros
+    );
+
+    const atual =
+      rows.find(row => row.periodo === 'atual') || {
+        faturamento: 0,
+        vendas: 0,
+        ticket_medio: 0,
+        itens_vendidos: 0
+      };
+
+    const anterior =
+      rows.find(row => row.periodo === 'anterior') || {
+        faturamento: 0,
+        vendas: 0,
+        ticket_medio: 0,
+        itens_vendidos: 0
+      };
+
+    const numero = valor =>
+      Number(valor || 0);
+
+    const variacao = (atual, anterior) => {
+      const a = numero(atual);
+      const b = numero(anterior);
+
+      if (b === 0) {
+        return a === 0 ? 0 : null;
+      }
+
+      return ((a - b) / Math.abs(b)) * 100;
+    };
+
+    res.json({
+      disponivel: true,
+      periodoAtual: {
+        inicio: inicioAtualParam,
+        fim: fimAtualParam
+      },
+      periodoAnterior: {
+        inicio: inicioAnteriorParam,
+        fim: fimAnteriorParam
+      },
+      atual: {
+        faturamento: numero(atual.faturamento),
+        vendas: numero(atual.vendas),
+        ticket_medio: numero(atual.ticket_medio),
+        itens_vendidos: numero(atual.itens_vendidos)
+      },
+      anterior: {
+        faturamento: numero(anterior.faturamento),
+        vendas: numero(anterior.vendas),
+        ticket_medio: numero(anterior.ticket_medio),
+        itens_vendidos: numero(anterior.itens_vendidos)
+      },
+      variacao: {
+        faturamento: variacao(
+          atual.faturamento,
+          anterior.faturamento
+        ),
+        vendas: variacao(
+          atual.vendas,
+          anterior.vendas
+        ),
+        ticket_medio: variacao(
+          atual.ticket_medio,
+          anterior.ticket_medio
+        ),
+        itens_vendidos: variacao(
+          atual.itens_vendidos,
+          anterior.itens_vendidos
+        )
+      }
+    });
+
   } catch (erro) {
     console.error(erro);
 
@@ -776,7 +1040,21 @@ app.get(
               END
             )::numeric,
             2
-          ) AS faturamento
+          ) AS faturamento,
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN 1
+              ELSE 0
+            END
+          ) AS vendas,
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN quantidade
+              ELSE 0
+            END
+          ) AS itens
         FROM vendas
         ${where}
         GROUP BY vendedor
@@ -814,6 +1092,13 @@ app.get(
       const query = `
         SELECT
           produto,
+          SUM(
+            CASE
+              WHEN status = 'Pago'
+              THEN 1
+              ELSE 0
+            END
+          ) AS vendas,
           SUM(
             CASE
               WHEN status = 'Pago'
@@ -1042,10 +1327,10 @@ app.post(
           .extname(req.file.originalname)
           .toLowerCase();
 
-      if (!['.xlsx', '.xls'].includes(extensao)) {
+      if (!['.xlsx', '.xls', '.csv'].includes(extensao)) {
         return res.status(400).json({
           erro:
-            'Formato inválido. Envie um arquivo Excel (.xlsx ou .xls).'
+            'Formato inválido. Envie um arquivo Excel (.xlsx, .xls) ou CSV (.csv).'
         });
       }
 
@@ -1054,7 +1339,8 @@ app.post(
           req.file.buffer,
           {
             type: 'buffer',
-            cellDates: true
+            cellDates: true,
+            FS: extensao === '.csv' ? ';' : undefined
           }
         );
 
