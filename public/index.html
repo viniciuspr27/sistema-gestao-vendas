@@ -4547,7 +4547,7 @@ ticks:{
 callback:
 horizontal
 ?v=>money(v)
-:v=>v
+:v=>"R$ "+Number(v).toLocaleString("pt-BR",{notation:"compact",maximumFractionDigits:1})
 }
 
 }
