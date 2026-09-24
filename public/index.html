@@ -8064,6 +8064,16 @@ async function confirmarImportacaoPreview(){
 
   }
 
+  const confirmou = confirm(
+    "ATENÇÃO: esta importação vai APAGAR TODAS as vendas atuais e substituí-las pelo conteúdo do arquivo \"" + arquivo.name + "\".\n\nEssa ação não pode ser desfeita.\n\nDeseja continuar?"
+  );
+
+  if(!confirmou){
+
+    return;
+
+  }
+
   const botao =
     document.getElementById(
       "importPreviewConfirmar"
