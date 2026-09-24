@@ -2926,6 +2926,80 @@ font-weight:800;
   }
 
 }
+
+.print-only{display:none}
+
+@media print{
+
+@page{
+size:A4;
+margin:12mm;
+}
+
+html,body{
+background:#fff !important;
+-webkit-print-color-adjust:exact;
+print-color-adjust:exact;
+}
+
+#dashboard .top,
+.filters,
+#filterStatus,
+.sales-section,
+.login-scene{
+display:none !important;
+}
+
+.print-only{
+display:block !important;
+margin:0 0 14px 0;
+padding:0 0 10px 0;
+border-bottom:2px solid #c49a32;
+}
+
+.print-only h1{
+font-size:22px;
+margin:0 0 4px 0;
+color:#0f172a;
+}
+
+.print-only p{
+font-size:11px;
+margin:0;
+color:#475569;
+}
+
+.chartbox,
+.kpi-grid > *,
+.performance-panel,
+.alertas-panel,
+.alertas-item,
+.insight-card{
+break-inside:avoid;
+page-break-inside:avoid;
+}
+
+*{
+-webkit-print-color-adjust:exact;
+print-color-adjust:exact;
+}
+
+}
+
+/* print-fix-destaques */
+@media print{
+
+*:has(> .insight-label){
+break-inside:avoid;
+page-break-inside:avoid;
+}
+
+*:has(> * > .insight-label){
+break-inside:avoid;
+page-break-inside:avoid;
+}
+
+}
 </style>
 
 </head>
@@ -3174,6 +3248,13 @@ DASHBOARD
 
 <div id="dashboard" class="dash" hidden>
 
+<div id="printHeader" class="print-only">
+<h1>Dashboard de Vendas</h1>
+<p id="printPeriodo"></p>
+<p id="printGerado"></p>
+</div>
+
+
 <div class="top">
 
 <div class="top-info">
@@ -3197,6 +3278,16 @@ onclick="abrirImportacaoExcel()"
 
 <span>↻</span>
 Atualizar dados
+
+</button>
+
+<button
+class="update-excel-btn"
+onclick="exportarPDF()"
+>
+
+<span>⬇</span>
+Exportar PDF
 
 </button>
 
@@ -5370,6 +5461,30 @@ alertas.map(a=>
 '<div class="alertas-texto">'+destacar(a.texto)+'</div></div></div>'
 ).join("")+
 '</div>';
+
+}
+
+function exportarPDF(){
+
+const ini=$("dataInicio").value;
+const fim=$("dataFim").value;
+
+$("printPeriodo").textContent=
+ini||fim
+?"Período: "+(ini?formatarData(ini):"início")+" a "+(fim?formatarData(fim):"hoje")
+:"Período: todos os dados";
+
+$("printGerado").textContent=
+"Gerado em "+new Date().toLocaleString("pt-BR");
+
+const tituloOriginal=document.title;
+
+document.title=
+"dashboard-vendas-"+new Date().toISOString().slice(0,10);
+
+window.print();
+
+setTimeout(()=>{document.title=tituloOriginal},1000);
 
 }
 
