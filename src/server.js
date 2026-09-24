@@ -386,6 +386,8 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 app.use(
   helmet({
     contentSecurityPolicy: false
@@ -394,7 +396,9 @@ app.use(
 
 app.use(
   cors({
-    origin: true
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(',')
+      : false
   })
 );
 
@@ -450,7 +454,19 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+const HASH_FALSO = bcrypt.hashSync('senha-falsa-para-igualar-tempo', 10);
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  skipSuccessfulRequests: true,
+  message: {
+    erro: 'Muitas tentativas de login. Tente novamente em 15 minutos.'
+  }
+});
+
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
 
@@ -476,7 +492,12 @@ app.post('/api/login', async (req, res) => {
 
     const user = rows[0];
 
-    if (!user || !bcrypt.compareSync(senha, user.senha_hash)) {
+    const senhaCorreta = await bcrypt.compare(
+      senha,
+      user ? user.senha_hash : HASH_FALSO
+    );
+
+    if (!user || !senhaCorreta) {
       return res.status(401).json({
         erro: 'E-mail ou senha inválidos.'
       });
