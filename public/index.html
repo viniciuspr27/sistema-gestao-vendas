@@ -3943,7 +3943,7 @@ function formatarData(d){
 
 if(!d)return "";
 
-const p=String(d).split("-");
+const p=String(d).slice(0,10).split("-");
 
 return p.length===3
 ?`${p[2]}/${p[1]}/${p[0]}`
@@ -4530,10 +4530,7 @@ display:false
 },
 
 ticks:{
-callback:
-horizontal
-?v=>v
-:v=>money(v)
+callback:horizontal?v=>v:function(v){return this.getLabelForValue(v)}
 }
 
 },
