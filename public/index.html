@@ -5667,34 +5667,14 @@ let periodoPadraoAplicado=false;
 async function definirPeriodoPadrao(){
 
 if(periodoPadraoAplicado)return;
+
 periodoPadraoAplicado=true;
 
-try{
-
-if($("dataInicio").value||$("dataFim").value)return;
-
-const ultima=await api("/api/vendas?limit=1");
-
-if(!Array.isArray(ultima)||!ultima.length)return;
-
-const fim=String(ultima[0].data).slice(0,10);
-const p=fim.split("-").map(Number);
-
-if(p.length!==3||p.some(isNaN))return;
-
-const ini=new Date(Date.UTC(p[0],p[1]-1,p[2]-29));
-
-$("dataInicio").value=ini.toISOString().slice(0,10);
-$("dataFim").value=fim;
+$("dataInicio").value="";
+$("dataFim").value="";
 
 if(typeof atualizarStatusFiltro==="function")
 atualizarStatusFiltro();
-
-}catch(e){
-
-console.warn("Periodo padrao indisponivel:",e);
-
-}
 
 }
 
