@@ -249,7 +249,7 @@ function prepararLinhaParaImportacao(linha) {
   const novaLinha = {
     ...linha
   };
-
+
 
   if (
     Object.prototype.hasOwnProperty.call(
@@ -515,6 +515,8 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         expiresIn: '2h'
       }
     );
+
+await sql`INSERT INTO logs_auditoria (usuario_id, usuario_nome, acao, detalhe) VALUES (${user.id}, ${user.nome}, 'login', 'Login realizado')`;
 
     res.json({
       token,
@@ -3015,8 +3017,43 @@ app.use(
    SERVIDOR
 ================================ */
 
+app.get("/api/previsao-vendas", authRequired, async (req, res) => {
+  try {
+    const rows = await sql`
+      SELECT DATE_TRUNC('month', data::date) AS mes, SUM(faturamento) AS total
+      FROM vendas WHERE status = 'Pago'
+      GROUP BY mes ORDER BY mes DESC LIMIT 6
+    `;
+    const valores = rows.map(r => Number(r.total)).reverse();
+    if (valores.length < 2) return res.json({ previsao: null, tendencia: "dados insuficientes" });
+    let pesoTotal = 0, somaPonderada = 0;
+    valores.forEach((v, i) => { const peso = i + 1; somaPonderada += v * peso; pesoTotal += peso; });
+    const previsao = somaPonderada / pesoTotal;
+    const ultimo = valores[valores.length - 1];
+    const variacao = ((previsao - ultimo) / ultimo) * 100;
+    res.json({
+      previsao: Math.round(previsao * 100) / 100,
+      variacao_percentual: Math.round(variacao * 10) / 10,
+      tendencia: variacao > 0 ? "alta" : variacao < 0 ? "queda" : "estavel",
+      base_meses: valores.length
+    });
+  } catch (err) { console.error(err); res.status(500).json({ erro: "Falha ao calcular previsao" }); }
+});
+
 const port =
   Number(process.env.PORT) || 3000;
+
+app.get("/api/logs-auditoria", authRequired, roleRequired("admin"), async (req, res) => {
+  try {
+    const logs = await sql`
+      SELECT id, usuario_nome, acao, detalhe, criado_em
+      FROM logs_auditoria
+      ORDER BY criado_em DESC
+      LIMIT 100
+    `;
+    res.json(logs);
+  } catch (err) { console.error(err); res.status(500).json({ erro: "Falha ao buscar logs" }); }
+});
 
 app.listen(port, () => {
   console.log(
