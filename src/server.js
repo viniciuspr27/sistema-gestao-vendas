@@ -717,7 +717,9 @@ app.get('/api/kpis', authRequired, async (req, res) => {
             END
           ),
           0
-        ) AS itens_vendidos
+        ) AS itens_vendidos,
+        COUNT(DISTINCT vendedor) AS vendedores_ativos,
+        COUNT(DISTINCT produto) AS produtos_analisados
       FROM vendas
       ${where}
     `;
@@ -896,7 +898,9 @@ app.get('/api/comparacao-periodos', authRequired, async (req, res) => {
         faturamento: 0,
         vendas: 0,
         ticket_medio: 0,
-        itens_vendidos: 0
+        itens_vendidos: 0,
+        vendedores_ativos: 0,
+        produtos_analisados: 0
       };
 
     const anterior =
@@ -904,7 +908,9 @@ app.get('/api/comparacao-periodos', authRequired, async (req, res) => {
         faturamento: 0,
         vendas: 0,
         ticket_medio: 0,
-        itens_vendidos: 0
+        itens_vendidos: 0,
+        vendedores_ativos: 0,
+        produtos_analisados: 0
       };
 
     const numero = valor =>
@@ -935,13 +941,17 @@ app.get('/api/comparacao-periodos', authRequired, async (req, res) => {
         faturamento: numero(atual.faturamento),
         vendas: numero(atual.vendas),
         ticket_medio: numero(atual.ticket_medio),
-        itens_vendidos: numero(atual.itens_vendidos)
+        itens_vendidos: numero(atual.itens_vendidos),
+        vendedores_ativos: numero(atual.vendedores_ativos),
+        produtos_analisados: numero(atual.produtos_analisados)
       },
       anterior: {
         faturamento: numero(anterior.faturamento),
         vendas: numero(anterior.vendas),
         ticket_medio: numero(anterior.ticket_medio),
-        itens_vendidos: numero(anterior.itens_vendidos)
+        itens_vendidos: numero(anterior.itens_vendidos),
+        vendedores_ativos: numero(anterior.vendedores_ativos),
+        produtos_analisados: numero(anterior.produtos_analisados)
       },
       variacao: {
         faturamento: variacao(
@@ -959,6 +969,14 @@ app.get('/api/comparacao-periodos', authRequired, async (req, res) => {
         itens_vendidos: variacao(
           atual.itens_vendidos,
           anterior.itens_vendidos
+        ),
+        vendedores_ativos: variacao(
+          atual.vendedores_ativos,
+          anterior.vendedores_ativos
+        ),
+        produtos_analisados: variacao(
+          atual.produtos_analisados,
+          anterior.produtos_analisados
         )
       }
     });
@@ -990,6 +1008,7 @@ app.get(
             data::date,
             'YYYY-MM'
           ) AS mes,
+
           ROUND(
             SUM(
               CASE
@@ -999,7 +1018,49 @@ app.get(
               END
             )::numeric,
             2
-          ) AS faturamento
+          ) AS faturamento,
+
+          COUNT(
+            CASE
+              WHEN status = 'Pago'
+              THEN 1
+            END
+          ) AS vendas,
+
+          COALESCE(
+            SUM(
+              CASE
+                WHEN status = 'Pago'
+                THEN quantidade
+                ELSE 0
+              END
+            ),
+            0
+          ) AS itens,
+
+          ROUND(
+            (
+              SUM(
+                CASE
+                  WHEN status = 'Pago'
+                  THEN faturamento
+                  ELSE 0
+                END
+              )
+              /
+              NULLIF(
+                COUNT(
+                  CASE
+                    WHEN status = 'Pago'
+                    THEN 1
+                  END
+                ),
+                0
+              )
+            )::numeric,
+            2
+          ) AS ticket_medio
+
         FROM vendas
         ${where}
         GROUP BY

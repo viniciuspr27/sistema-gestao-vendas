@@ -3145,6 +3145,139 @@ page-break-inside:avoid;
 }
 
 }
+
+
+/* =========================================================
+   NOVA COMPOSICAO DOS KPIs — 4 + 3
+   ========================================================= */
+
+.kpi-grid{
+display:flex !important;
+flex-wrap:wrap;
+justify-content:center;
+gap:16px;
+margin-bottom:20px;
+}
+
+.kpi-grid > .card{
+flex:0 0 calc((100% - 48px) / 4);
+max-width:calc((100% - 48px) / 4);
+box-sizing:border-box;
+}
+
+/* Tablet */
+@media(max-width:1200px) and (min-width:701px){
+
+.kpi-grid > .card{
+flex:0 0 calc((100% - 32px) / 3);
+max-width:calc((100% - 32px) / 3);
+}
+
+}
+
+/* Celular */
+@media(max-width:700px){
+
+.kpi-grid{
+gap:12px;
+}
+
+.kpi-grid > .card{
+flex:0 0 100%;
+max-width:100%;
+}
+
+}
+
+
+
+/* =========================================================
+   EXPLORADOR DO GRAFICO MENSAL
+   ========================================================= */
+
+.chart-explorer-bar{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:16px;
+margin:10px 0 5px;
+}
+
+.chart-explorer-label{
+display:flex;
+align-items:center;
+gap:7px;
+font-size:10px;
+font-weight:800;
+letter-spacing:.4px;
+text-transform:uppercase;
+color:#64748b;
+}
+
+.explorer-dot{
+width:7px;
+height:7px;
+border-radius:50%;
+background:#d4af37;
+box-shadow:0 0 0 4px rgba(212,175,55,.12);
+}
+
+.chart-metric-switch{
+display:flex;
+align-items:center;
+gap:4px;
+padding:3px;
+border:1px solid #dbe3ec;
+border-radius:10px;
+background:#f8fafc;
+}
+
+.chart-metric-btn{
+border:0;
+background:transparent;
+padding:7px 10px;
+border-radius:7px;
+font-size:9px;
+font-weight:800;
+color:#64748b;
+cursor:pointer;
+transition:.2s;
+}
+
+.chart-metric-btn:hover{
+color:#1e3a5f;
+background:#fff;
+}
+
+.chart-metric-btn.active{
+background:#1e3a5f;
+color:#fff;
+box-shadow:0 3px 8px rgba(30,58,95,.18);
+}
+
+.chart-explorer-hint{
+font-size:9px;
+color:#94a3b8;
+margin-bottom:7px;
+}
+
+@media(max-width:700px){
+
+.chart-explorer-bar{
+align-items:flex-start;
+flex-direction:column;
+}
+
+.chart-metric-switch{
+width:100%;
+}
+
+.chart-metric-btn{
+flex:1;
+}
+
+}
+
 </style>
 
 </head>
@@ -3816,9 +3949,9 @@ id="chartVisaoGeral"
 
 <div>
 
-<h3>Evolução do faturamento</h3>
+<h3 id="tituloGraficoMensal">Evolução do faturamento</h3>
 
-<p>
+<p id="subtituloGraficoMensal">
 Desempenho mensal das vendas pagas
 </p>
 
@@ -3831,6 +3964,31 @@ VISÃO GERAL
 </div>
 
 <div class="chart-container">
+<div class="chart-explorer-bar">
+  <div class="chart-explorer-label">
+    <span class="explorer-dot"></span>
+    Explorar desempenho
+  </div>
+
+  <div class="chart-metric-switch">
+    <button type="button" class="chart-metric-btn active" data-metric="faturamento">
+      Faturamento
+    </button>
+
+    <button type="button" class="chart-metric-btn" data-metric="vendas">
+      Vendas
+    </button>
+
+    <button type="button" class="chart-metric-btn" data-metric="ticket">
+      Ticket médio
+    </button>
+  </div>
+</div>
+
+<div class="chart-explorer-hint">
+  Clique em uma métrica para explorar o desempenho do período.
+</div>
+
 <canvas id="mensal"></canvas>
 </div>
 
@@ -5979,6 +6137,205 @@ label:c=>
 }
 );
 
+
+/* =========================================================
+   EXPLORADOR DO GRAFICO MENSAL
+   ========================================================= */
+
+let metricaMensalAtual = "faturamento";
+let dadosMensaisAtuais = [];
+
+function configurarExploradorMensal(dados){
+
+dadosMensaisAtuais =
+Array.isArray(dados) ? dados : [];
+
+const botoes =
+document.querySelectorAll(".chart-metric-btn");
+
+botoes.forEach(botao => {
+
+botao.onclick = () => {
+
+const metrica =
+botao.dataset.metric;
+
+if(!metrica){
+return;
+}
+
+metricaMensalAtual = metrica;
+
+botoes.forEach(b =>
+b.classList.toggle(
+"active",
+b.dataset.metric === metrica
+)
+);
+
+atualizarGraficoMensal();
+
+};
+
+});
+
+}
+
+function atualizarGraficoMensal(){
+
+if(!chartMensal){
+return;
+}
+
+const configuracoes = {
+
+faturamento:{
+label:"Faturamento",
+dados:dadosMensaisAtuais.map(
+x=>Number(x.faturamento || 0)
+),
+money:true,
+prefixo:"R$ "
+},
+
+vendas:{
+label:"Vendas",
+dados:dadosMensaisAtuais.map(
+x=>Number(x.vendas || 0)
+),
+money:false,
+prefixo:""
+},
+
+ticket:{
+label:"Ticket médio",
+dados:dadosMensaisAtuais.map(
+x=>Number(x.ticket_medio || 0)
+),
+money:true,
+prefixo:"R$ "
+}
+
+};
+
+const config =
+configuracoes[metricaMensalAtual] ||
+configuracoes.faturamento;
+
+/* Atualiza titulo e descricao do grafico */
+const tituloGrafico = $("tituloGraficoMensal");
+const subtituloGrafico = $("subtituloGraficoMensal");
+
+if(tituloGrafico && subtituloGrafico){
+
+if(metricaMensalAtual === "vendas"){
+
+tituloGrafico.textContent =
+"Evolução das vendas";
+
+subtituloGrafico.textContent =
+"Quantidade de vendas realizadas por mês";
+
+}else if(metricaMensalAtual === "ticket"){
+
+tituloGrafico.textContent =
+"Evolução do ticket médio";
+
+subtituloGrafico.textContent =
+"Valor médio das vendas pagas por mês";
+
+}else{
+
+tituloGrafico.textContent =
+"Evolução do faturamento";
+
+subtituloGrafico.textContent =
+"Desempenho mensal das vendas pagas";
+
+}
+
+}
+
+/* Atualiza a métrica */
+chartMensal.data.datasets[0].label =
+config.label;
+
+chartMensal.data.datasets[0].data =
+config.dados;
+
+/* Mantém o visual dourado */
+chartMensal.data.datasets[0].borderColor =
+"#d4af37";
+
+chartMensal.data.datasets[0].pointBackgroundColor =
+"#d4af37";
+
+chartMensal.data.datasets[0].segment = {
+borderColor:"#d4af37"
+};
+
+/* Tooltip */
+chartMensal.options.plugins.tooltip.callbacks.label =
+context => {
+
+const valor =
+Number(context.raw || 0);
+
+if(config.money){
+return ` ${config.label}: ${money(valor)}`;
+}
+
+return ` ${config.label}: ${valor.toLocaleString("pt-BR")}`;
+
+};
+
+/* Eixo Y */
+chartMensal.options.scales.y.ticks.callback =
+value => {
+
+const numero =
+Number(value || 0);
+
+if(metricaMensalAtual === "vendas"){
+return numero.toLocaleString("pt-BR");
+}
+
+return "R$ " + numero.toLocaleString(
+"pt-BR",
+{
+notation:"compact",
+maximumFractionDigits:1
+}
+);
+
+};
+
+/* Garante eixo começando no zero */
+chartMensal.options.scales.y.beginAtZero = true;
+
+/* Remove qualquer animação anterior */
+if(chartMensal.$revealFrame){
+cancelAnimationFrame(
+chartMensal.$revealFrame
+);
+
+chartMensal.$revealFrame = null;
+}
+
+/* Reinicia a revelação */
+chartMensal.$revealProgress = 0;
+chartMensal.$revealStarted = false;
+
+/* Atualiza sem animação automática */
+chartMensal.update("none");
+
+/* Desenha novamente da esquerda para a direita */
+animarLinhaFaturamento();
+
+}
+
+configurarExploradorMensal(m);
+
 /* =========================================================
 RANKING
 ========================================================= */
@@ -5999,6 +6356,55 @@ const valoresVendedores=
 rankingVendedores.map(
 x=>Number(x.faturamento)
 );
+
+let vendedorSelecionado = null;
+
+function atualizarDestaqueVendedores(){
+
+if(!chartVendedores){
+return;
+}
+
+const dataset =
+chartVendedores.data.datasets[0];
+
+dataset.backgroundColor =
+rankingVendedores.map(
+(vendedor, indice) => {
+
+if(
+vendedorSelecionado &&
+vendedor.vendedor !== vendedorSelecionado
+){
+return "rgba(148,163,184,.22)";
+}
+
+return coresRanking(
+rankingVendedores
+)[indice];
+}
+);
+
+dataset.borderColor =
+rankingVendedores.map(
+(vendedor, indice) => {
+
+if(
+vendedorSelecionado &&
+vendedor.vendedor !== vendedorSelecionado
+){
+return "rgba(148,163,184,.12)";
+}
+
+return bordasRanking(
+rankingVendedores
+)[indice];
+}
+);
+
+chartVendedores.update("none");
+
+}
 
 chartVendedores = new Chart($("vendedores"), {
 type: "bar",
@@ -6062,26 +6468,6 @@ return [
 }
 },
 
-},
-onClick: (event, elements) => {
-if (!elements.length) {
-return;
-}
-
-const indice = elements[0].index;
-const vendedor = rankingVendedores[indice] && rankingVendedores[indice].vendedor;
-
-if (!vendedor) {
-return;
-}
-
-const filtro = $("filtroVendedor");
-
-if (filtro) {
-filtro.value = vendedor;
-}
-
-carregarDashboard();
 },
 
 scales: {
